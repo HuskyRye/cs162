@@ -1,0 +1,43 @@
+gdb map
+break main
+run
+print argv
+print *(argv)
+next
+next
+next
+print recur
+step
+next
+next
+layout asm
+stepi
+stepi
+stepi
+stepi
+stepi
+info registers
+q
+stepi
+layout src
+backtrace
+break recur if i==0
+continue
+backtrace
+frame 4
+print argc
+frame 0
+next
+next
+next
+layout asm
+# mov    $0x0,%eax
+# leaveq
+# retq
+layout src
+finish
+finish
+finish
+finish
+continue
+q

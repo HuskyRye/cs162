@@ -1,0 +1,35 @@
+1.
+call	recur
+
+2.
+.text: asm code
+.data: statically allocated, pre-initialized variables
+
+3.
+objdump -t
+
+4.
+local (l), global (g), unique global (u)
+The symbol is a debugging symbol (d) or a dynamic symbol (D) or a normal symbol (a space).
+The symbol is the name of a function (F) or a file (f) or an object (O) or just a normal symbol (a space).
+*UND*: undefined
+
+5.
+recurse.o
+00000000 g     F .text  00000052 recur
+
+6.
+addresses are added
+
+7.
+.text
+
+8.
+.data
+.bss
+
+9.
+stack and heap are managed during executing
+
+10.
+from high address to low address, when set new frame, sub    $0x8,%esp
