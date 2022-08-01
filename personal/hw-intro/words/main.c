@@ -80,8 +80,9 @@ void count_words(WordCount** wclist, FILE* infile) {
     } else if (in_word && !c_is_alpha) {
       in_word = false;
       temp[pos] = '\0';
+      if (pos > 1) // a leter is not a word
+        add_word(wclist, temp);
       pos = 0;
-      add_word(wclist, temp);
     } else if (in_word && c_is_alpha) {
       temp[pos] = tolower(c);
       pos += 1;
