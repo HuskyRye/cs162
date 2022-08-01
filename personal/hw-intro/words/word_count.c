@@ -76,6 +76,6 @@ void fprint_words(WordCount* wchead, FILE* ofile) {
   /* print word counts to a file */
   WordCount* wc;
   for (wc = wchead; wc; wc = wc->next) {
-    fprintf(ofile, "%i\t%s\n", wc->count, wc->word);
+    fprintf(ofile, "%8d\t%s\n", wc->count, wc->word);
   }
 }
