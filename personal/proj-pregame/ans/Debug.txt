@@ -1,0 +1,15 @@
+1.
+setup_stack at process.c:474
+*esp = PHYS_BASE - 0xc;
+
+2.
+setup_stack at process.c:474
+*esp = PHYS_BASE - 0x12;
+
+3.
+0xbfffff98:     0x00000001      0x000000a2
+
+4.
+args[0]: 1
+args[1]: 162
+int $0x30 push these arguments from user code into kernel code
