@@ -73,6 +73,8 @@ static void locate_block_devices(void);
 static void locate_block_device(enum block_type, const char* name);
 #endif
 
+int main(void) NO_RETURN;
+
 /* Pintos main program. */
 int main(void) {
   char** argv;
@@ -328,16 +330,16 @@ static void run_userprog_kernel_task(char** argv) {
   printf("Execution of '%s' complete.\n", task);
 }
 
-#ifdef THREADS
 /* Runs the threads kernel task specified in ARGV[1]. */
 static void run_threads_kernel_task(char** argv) {
   const char* task = argv[1];
 
   printf("Executing '%s':\n", task);
+#ifdef THREADS
   run_threads_test(task);
+#endif
   printf("Execution of '%s' complete.\n", task);
 }
-#endif
 
 /* Executes all of the actions specified in ARGV[]
    up to the null pointer sentinel. */

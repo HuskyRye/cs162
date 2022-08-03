@@ -5,7 +5,7 @@
 int factorial(int);
 
 /* Computes the absolute value of x, |x| */
-double abs_val(double x) { return x > 0 ? x : -x; }
+double abs(double x) { return x > 0 ? x : -x; }
 
 /* Computes n factorial, for any n >= 0 */
 int factorial(int n) {

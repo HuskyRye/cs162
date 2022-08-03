@@ -21,6 +21,6 @@ static inline int fpu_pop(void) {
 
 int sys_sum_to_e(int);
 double sum_to_e(int);
-double abs_val(double);
+double abs(double);
 
 #endif /* lib/debug.h */

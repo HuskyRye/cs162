@@ -7,11 +7,9 @@ tests/memory_TESTS = $(addprefix tests/memory/,sbrk-page sbrk-small sbrk-none \
 sbrk-multi sbrk-zero sbrk-rv sbrk-large sbrk-mebi sbrk-fail-1 sbrk-fail-2 \
 sbrk-dealloc sbrk-many sbrk-counter sbrk-oom-1 sbrk-oom-2 \
 malloc-simple malloc-free malloc-fit malloc-fail malloc-merge-1 \
-malloc-merge-2 malloc-null realloc-1 realloc-2 realloc-3 realloc-null)
-
-# Removed stack growth tests for SU22
-# pt-grow-stack pt-grow-pusha pt-grow-bad pt-big-stk-obj pt-bad-addr \
-# pt-bad-read pt-write-code pt-write-code2 pt-grow-stk-sc pt-stk-oflow \
+malloc-merge-2 malloc-null realloc-1 realloc-2 realloc-3 realloc-null \
+pt-grow-stack pt-grow-pusha pt-grow-bad pt-big-stk-obj pt-bad-addr \
+pt-bad-read pt-write-code pt-write-code2 pt-grow-stk-sc pt-stk-oflow)
 
 tests/memory_PROGS = $(tests/memory_TESTS)
 

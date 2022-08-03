@@ -14,7 +14,7 @@ void test_main(void) {
   pid_t e_pid = exec("compute-e");
   double e_res = sum_to_e(10);
   wait(e_pid);
-  if (abs_val(e_res - E_VAL) < TOL) {
+  if (abs(e_res - E_VAL) < TOL) {
     msg("Success!");
     exit(162);
   } else {
