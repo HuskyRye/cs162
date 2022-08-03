@@ -1,11 +1,8 @@
 # -*- makefile -*-
 
 # Test names.
-tests/userprog/kernel_TESTS = $()
-
-# Remove kernel tests for Project Threads in SU22
-# addprefix tests/userprog/kernel/,              \
-# fp-kasm fp-kinit
+tests/userprog/kernel_TESTS = $(addprefix tests/userprog/kernel/,              \
+fp-kasm fp-kinit)
 
 # Sources for tests.
 tests/userprog/kernel_SRC  = tests/userprog/kernel/tests.c

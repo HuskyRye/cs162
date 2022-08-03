@@ -7,18 +7,13 @@ alarm-negative priority-change priority-donate-one \
 priority-donate-multiple priority-donate-multiple2 \
 priority-donate-nest priority-donate-sema priority-donate-lower \
 priority-fifo priority-preempt priority-sema priority-condvar \
-priority-donate-chain \
+st-matmul mt-matmul-2 mt-matmul-4 mt-matmul-16 \
+priority-donate-chain priority-starve priority-starve-sema \
+smfs-starve-0 smfs-starve-1 smfs-starve-2 smfs-starve-4 \
+smfs-starve-8 smfs-starve-16 smfs-starve-64 smfs-starve-256 \
+smfs-prio-change \
+smfs-hierarchy-16 smfs-hierarchy-32 smfs-hierarchy-64 \
 )
-
-# Remove priority tests that are not in autograder
-# priority-starve priority-starve-sema \
-
-# Remove matmul and SMFS for SU22
-# st-matmul mt-matmul-2 mt-matmul-4 mt-matmul-16 \
-# smfs-starve-0 smfs-starve-1 smfs-starve-2 smfs-starve-4 \
-# smfs-starve-8 smfs-starve-16 smfs-starve-64 smfs-starve-256 \
-# smfs-prio-change \
-# smfs-hierarchy-16 smfs-hierarchy-32 smfs-hierarchy-64 \
 
 # Remove MLFQS tests for SU21
 # mlfqs-load-1 mlfqs-load-60 mlfqs-load-avg mlfqs-recent-1 mlfqs-fair-2	\

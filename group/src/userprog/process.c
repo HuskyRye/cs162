@@ -22,7 +22,9 @@
 
 static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
+static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp);
+bool setup_thread(void (**eip)(void), void** esp);
 
 /* Initializes user programs in the system by ensuring the main
    thread has a minimal PCB so that it can execute and wait for
@@ -501,3 +503,62 @@ bool is_main_thread(struct thread* t, struct process* p) { return p->main_thread
 
 /* Gets the PID of a process */
 pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
+
+/* Creates a new stack for the thread and sets up its arguments.
+   Stores the thread's entry point into *EIP and its initial stack
+   pointer into *ESP. Handles all cleanup if unsuccessful. Returns
+   true if successful, false otherwise.
+
+   This function will be implemented in Project 2: Multithreading. For
+   now, it does nothing. You may find it necessary to change the
+   function signature. */
+bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED) { return false; }
+
+/* Starts a new thread with a new user stack running SF, which takes
+   TF and ARG as arguments on its user stack. This new thread may be
+   scheduled (and may even exit) before pthread_execute () returns.
+   Returns the new thread's TID or TID_ERROR if the thread cannot
+   be created properly.
+
+   This function will be implemented in Project 2: Multithreading and
+   should be similar to process_execute (). For now, it does nothing.
+   */
+tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSED) { return -1; }
+
+/* A thread function that creates a new user thread and starts it
+   running. Responsible for adding itself to the list of threads in
+   the PCB.
+
+   This function will be implemented in Project 2: Multithreading and
+   should be similar to start_process (). For now, it does nothing. */
+static void start_pthread(void* exec_ UNUSED) {}
+
+/* Waits for thread with TID to die, if that thread was spawned
+   in the same process and has not been waited on yet. Returns TID on
+   success and returns TID_ERROR on failure immediately, without
+   waiting.
+
+   This function will be implemented in Project 2: Multithreading. For
+   now, it does nothing. */
+tid_t pthread_join(tid_t tid UNUSED) { return -1; }
+
+/* Free the current thread's resources. Most resources will
+   be freed on thread_exit(), so all we have to do is deallocate the
+   thread's userspace stack. Wake any waiters on this thread.
+
+   The main thread should not use this function. See
+   pthread_exit_main() below.
+
+   This function will be implemented in Project 2: Multithreading. For
+   now, it does nothing. */
+void pthread_exit(void) {}
+
+/* Only to be used when the main thread explicitly calls pthread_exit.
+   The main thread should wait on all threads in the process to
+   terminate properly, before exiting itself. When it exits itself, it
+   must terminate the process in addition to all necessary duties in
+   pthread_exit.
+
+   This function will be implemented in Project 2: Multithreading. For
+   now, it does nothing. */
+void pthread_exit_main(void) {}
