@@ -88,6 +88,7 @@ static void setup_arguments(char* command, void** esp) {
     }
   }
   uintptr_t* esp_ = (uintptr_t*)(words - (4 - ((char*)*esp - words) % 4)); // stack align
+  esp_ -= ((uintptr_t)(esp_ - (argc + 3)) % 16) / 4;                       // stack pointer align
 
   // argv
   *(--esp_) = 0; // argv[argc]
@@ -103,7 +104,7 @@ static void setup_arguments(char* command, void** esp) {
   *(--esp_) = 0;
 
   *esp = esp_;
-  // hex_dump((uintptr_t)esp_, esp_, (uint8_t*)PHYS_BASE - (uint8_t*)esp_, true);
+  // hex_dump((uintptr_t)esp_, esp_, (uint8_t*)*esp - (uint8_t*)esp_, true);
 }
 
 /* A thread function that loads a user process and starts it
