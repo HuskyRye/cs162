@@ -1,0 +1,18 @@
+{
+    "files.associations": {
+        "*.inc": "c",
+        "*.tcc": "c",
+        "exception": "c",
+        "fstream": "c",
+        "iosfwd": "c",
+        "new": "c",
+        "ostream": "c",
+        "sstream": "c",
+        "streambuf": "c",
+        "algorithm": "c",
+        "pthread.h": "c",
+        "syscall.h": "c",
+        "stdio.h": "c",
+        "inttypes.h": "c"
+    }
+}

@@ -1,5 +1,6 @@
 #include "userprog/process.h"
 #include <debug.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
@@ -69,10 +70,56 @@ pid_t process_execute(const char* file_name) {
   return tid;
 }
 
+static void setup_arguments(char* command, void** esp) {
+  bool in_word = false;
+  int argc = 0;
+  char* words = *esp;
+  for (int i = strlen(command) - 1; i >= 0; --i) {
+    char c = command[i];
+    if (!isspace(c)) {
+      if (!in_word) {
+        *(--words) = '\0';
+        ++argc;
+        in_word = true;
+      }
+      *(--words) = c;
+    } else if (in_word) {
+      in_word = false;
+    }
+  }
+  uintptr_t* esp_ = (uintptr_t*)(words - (4 - ((char*)*esp - words) % 4)); // stack align
+
+  // argv
+  *(--esp_) = 0; // argv[argc]
+  esp_ -= argc;
+  for (int i = 0; i < argc; ++i) {
+    esp_[i] = (uintptr_t)words; // argv[i]
+    while (*(words++))
+      ;
+  }
+  --esp_;
+  *esp_ = (uintptr_t)(esp_ + 1);
+  *(--esp_) = argc;
+  *(--esp_) = 0;
+
+  *esp = esp_;
+  // hex_dump((uintptr_t)esp_, esp_, (uint8_t*)PHYS_BASE - (uint8_t*)esp_, true);
+}
+
 /* A thread function that loads a user process and starts it
    running. */
 static void start_process(void* file_name_) {
-  char* file_name = (char*)file_name_;
+  /* Get the executables's real file_name */
+  size_t len_file_name = 0;
+  for (char* p = (char*)file_name_; *p != '\0'; ++p) {
+    if (isspace(*p)) {
+      break;
+    }
+    ++len_file_name;
+  }
+  char* file_name = malloc(len_file_name + 1);
+  strlcpy(file_name, file_name_, len_file_name + 1);
+
   struct thread* t = thread_current();
   struct intr_frame if_;
   bool success, pcb_success;
@@ -90,7 +137,7 @@ static void start_process(void* file_name_) {
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
-    strlcpy(t->pcb->process_name, t->name, sizeof t->name);
+    strlcpy(t->pcb->process_name, file_name, sizeof t->pcb->process_name);
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -100,6 +147,11 @@ static void start_process(void* file_name_) {
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load(file_name, &if_.eip, &if_.esp);
+  }
+
+  /* Put the arguments on the stack. */
+  if (success) {
+    setup_arguments(file_name_, &if_.esp);
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
@@ -113,7 +165,8 @@ static void start_process(void* file_name_) {
   }
 
   /* Clean up. Exit on failure or jump to userspace */
-  palloc_free_page(file_name);
+  palloc_free_page(file_name_);
+  free(file_name);
   if (!success) {
     sema_up(&temporary);
     thread_exit();

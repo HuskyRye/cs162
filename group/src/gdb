@@ -1,0 +1,3 @@
+ INTOS_DEBUG=1 pintos-test do-nothing
+ loadusersymbols tests/userprog/do-nothing
+ debugpintos
