@@ -2,6 +2,7 @@
 #define USERPROG_PROCESS_H
 
 #include "threads/thread.h"
+#include <list.h>
 #include <stdint.h>
 
 // At most 8MB can be allocated to the stack
@@ -17,6 +18,21 @@ typedef tid_t pid_t;
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
 
+struct load_info {
+  char* file_name;
+  struct process* parent;
+  struct semaphore sema_load;
+  bool load_success;
+};
+
+struct wait_info {
+  pid_t pid;                     /* Child process's pid */
+  struct process* child_process; /* Child process */
+  int exit_status;               /* Child process's exit status */
+  struct semaphore sema_wait;    /* semaphore for wait */
+  struct list_elem elem;
+};
+
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
    PCB from the TCB. All TCBs in a process will have a pointer
@@ -24,9 +40,12 @@ typedef void (*stub_fun)(pthread_fun, void*);
    of the process, which is `special`. */
 struct process {
   /* Owned by process.c. */
-  uint32_t* pagedir;          /* Page directory. */
-  char process_name[16];      /* Name of the main thread */
-  struct thread* main_thread; /* Pointer to main thread */
+  uint32_t* pagedir;           /* Page directory. */
+  char process_name[16];       /* Name of the main thread */
+  struct thread* main_thread;  /* Pointer to main thread */
+  int exit_status;             /* Exit status of current process */
+  struct wait_info* wait_info; /* Infos of this process */
+  struct list children;        /* Child processes */
 };
 
 void userprog_init(void);

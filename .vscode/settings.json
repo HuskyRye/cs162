@@ -13,6 +13,7 @@
         "pthread.h": "c",
         "syscall.h": "c",
         "stdio.h": "c",
-        "inttypes.h": "c"
+        "inttypes.h": "c",
+        "process.h": "c"
     }
 }

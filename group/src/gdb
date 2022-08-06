@@ -1,3 +1,4 @@
- INTOS_DEBUG=1 pintos-test do-nothing
- loadusersymbols tests/userprog/do-nothing
+ PINTOS_DEBUG=1 pintos-test exec-arg
+ loadusersymbols tests/userprog/exec-arg
  debugpintos
+ dumplist &all_list thread allelem
