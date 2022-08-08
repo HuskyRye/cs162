@@ -2,6 +2,7 @@
 #define __LIB_STDDEF_H
 
 #define NULL ((void*)0)
+#define EOF (-1)
 #define offsetof(TYPE, MEMBER) ((size_t) & ((TYPE*)0)->MEMBER)
 
 /* GCC predefines the types we need for ptrdiff_t and size_t,

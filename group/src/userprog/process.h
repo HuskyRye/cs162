@@ -33,6 +33,12 @@ struct wait_info {
   struct list_elem elem;
 };
 
+struct file_info {
+  int fd;          /* File descriptor */
+  struct file* fp; /* File pointer */
+  struct list_elem elem;
+};
+
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
    PCB from the TCB. All TCBs in a process will have a pointer
@@ -46,6 +52,8 @@ struct process {
   int exit_status;             /* Exit status of current process */
   struct wait_info* wait_info; /* Infos of this process */
   struct list children;        /* Child processes */
+  struct list files;           /* Opend files */
+  int fd;                      /* Next fd(file descriptor) */
 };
 
 void userprog_init(void);
@@ -57,6 +65,8 @@ void process_activate(void);
 
 bool is_main_thread(struct thread*, struct process*);
 pid_t get_pid(struct process*);
+
+struct file* get_file(int fd);
 
 tid_t pthread_execute(stub_fun, pthread_fun, void*);
 tid_t pthread_join(tid_t);

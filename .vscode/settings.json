@@ -15,6 +15,9 @@
         "stdio.h": "c",
         "inttypes.h": "c",
         "process.h": "c",
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "istream": "c",
+        "limits": "c",
+        "malloc.h": "c"
     }
 }

@@ -152,6 +152,8 @@ static void start_process(void* load_info_) {
     t->pcb->main_thread = t;
     strlcpy(t->pcb->process_name, file_name, sizeof t->pcb->process_name);
     list_init(&(t->pcb->children));
+    list_init(&(t->pcb->files));
+    t->pcb->fd = 2;
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -276,6 +278,14 @@ void process_exit(void) {
     struct wait_info* info_to_free =
         list_entry(list_pop_front(&(cur->pcb->children)), struct wait_info, elem);
     info_to_free->child_process->wait_info = NULL;
+    free(info_to_free);
+  }
+
+  /* Close all opened files. */
+  while (!list_empty(&(cur->pcb->files))) {
+    struct file_info* info_to_free =
+        list_entry(list_pop_front(&(cur->pcb->files)), struct file_info, elem);
+    file_close(info_to_free->fp);
     free(info_to_free);
   }
 
@@ -611,6 +621,19 @@ bool is_main_thread(struct thread* t, struct process* p) { return p->main_thread
 
 /* Gets the PID of a process */
 pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
+
+/* Gets the file structure from file descriptor */
+struct file* get_file(int fd) {
+  struct list* files = &(thread_current()->pcb->files);
+  for (struct list_elem* elem = list_begin(files); elem != list_end(files);
+       elem = list_next(elem)) {
+    struct file_info* info = list_entry(elem, struct file_info, elem);
+    if (info->fd == fd) {
+      return info->fp;
+    }
+  }
+  return NULL;
+}
 
 /* Creates a new stack for the thread and sets up its arguments.
    Stores the thread's entry point into *EIP and its initial stack
