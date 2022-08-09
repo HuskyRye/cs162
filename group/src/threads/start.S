@@ -147,7 +147,7 @@ start:
 #       We don't (yet) support floating point.
 
 	movl %cr0, %eax
-	orl $CR0_PE | CR0_PG | CR0_WP | CR0_EM, %eax
+	orl $CR0_PE | CR0_PG | CR0_WP, %eax
 	movl %eax, %cr0
 
 # We're now in protected mode in a 16-bit segment.  The CPU still has

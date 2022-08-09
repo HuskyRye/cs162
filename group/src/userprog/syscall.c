@@ -49,6 +49,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     case SYS_TELL:
     case SYS_CLOSE:
     case SYS_PRACTICE:
+    case SYS_COMPUTE_E:
       verify_arg_vaddr(&args[1]);
     case SYS_HALT:
     default:
@@ -189,6 +190,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     case SYS_PRACTICE:
       f->eax = args[1] + 1;
+      break;
+    case SYS_COMPUTE_E:
+      f->eax = sys_sum_to_e(args[1]);
       break;
     default:
       break;
