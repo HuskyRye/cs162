@@ -11,6 +11,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <sys/stat.h>
 
 #include "tokenizer.h"
 
@@ -48,7 +49,7 @@ fun_desc_t cmd_table[] = {
     {cmd_help, "?", "show this help menu"},
     {cmd_exit, "exit", "exit the command shell"},
     {cmd_pwd, "pwd", "print name of current/working director"},
-    {cmd_cd, "cd", ""},
+    {cmd_cd, "cd", "change the working directory"},
 };
 
 /* Prints a helpful description for the given command */
@@ -59,7 +60,10 @@ int cmd_help(unused struct tokens* tokens) {
 }
 
 /* Exits this shell */
-int cmd_exit(unused struct tokens* tokens) { exit(0); }
+int cmd_exit(struct tokens* tokens) {
+  tokens_destroy(tokens); // memory leak!
+  exit(0);
+}
 
 /* Print name of current/working director */
 int cmd_pwd(unused struct tokens* tokens) {
@@ -74,16 +78,19 @@ int cmd_cd(unused struct tokens* tokens) {
     fprintf(stderr, "cd: too many arguments\n");
     return -1;
   }
-  if (tokens->tokens_length == 1) {
+  if (tokens->tokens_length == 1) { // "cd" == "cd ~"
     const char* home = getenv("HOME");
     if (home == NULL) {
       fprintf(stderr, "cd: HOME not set\n");
       return -1;
     }
     chdir(home);
+    return 0;
   } else {
     const char* path = (tokens->tokens[1]);
-    if (path[0] == '~') {
+    size_t path_len = strlen(path);
+    char* dir;
+    if (path[0] == '~') { /* Replace ~ with absolute path */
       uid_t uid = getuid();
       struct passwd* pwd = getpwuid(uid);
       if (!pwd) {
@@ -92,23 +99,22 @@ int cmd_cd(unused struct tokens* tokens) {
       }
       const char* home = pwd->pw_dir;
       size_t home_len = strlen(home);
-      char* dir = malloc(home_len + strlen(path));
+      dir = malloc(home_len + path_len);
       strcpy(dir, home);
       strcpy(dir + home_len, path + 1);
-      if (chdir(dir) == -1) {
-        fprintf(stderr, "cd: ");
-        perror(path);
-        free(dir);
-        return -1;
-      }
-      free(dir);
-    } else if (chdir(path) == -1) {
+    } else {
+      dir = malloc(path_len + 1);
+      strcpy(dir, path);
+    }
+    if (chdir(dir) == -1) {
       fprintf(stderr, "cd: ");
       perror(path);
+      free(dir);
       return -1;
     }
+    free(dir);
+    return 0;
   }
-  return 0;
 }
 
 /* Looks up the built-in command, if it exists. */
@@ -167,18 +173,72 @@ int main(unused int argc, unused char* argv[]) {
     } else {
       pid_t pid = fork();
       if (pid < 0) {
-        perror("");
-      } else if (pid == 0) {
+        perror("fork");
+      } else if (pid == 0) { // new process
         size_t tokens_len = tokens_get_length(tokens);
         char** argv = malloc(sizeof(char*) * (tokens_len + 1));
         for (int i = 0; i < tokens_len; ++i) {
           argv[i] = tokens_get_token(tokens, i);
         }
         argv[tokens_len] = NULL;
-        if (execv(tokens_get_token(tokens, 0), argv) == -1) {
-          perror(tokens_get_token(tokens, 0));
-          return -1;
+        const char* exe = tokens_get_token(tokens, 0);
+        size_t exe_len = strlen(exe);
+        char* cmd;
+        if (exe[0] == '~') { /* Replace ~ with absolute path */
+          uid_t uid = getuid();
+          struct passwd* pwd = getpwuid(uid);
+          if (!pwd) {
+            printf("User with %u ID is unknown.\n", uid);
+            return -1;
+          }
+          const char* home = pwd->pw_dir;
+          size_t home_len = strlen(home);
+          cmd = malloc(home_len + exe_len);
+          strcpy(cmd, home);
+          strcpy(cmd + home_len, exe + 1);
+        } else {
+          cmd = malloc(exe_len + 1);
+          strcpy(cmd, exe);
         }
+
+        if (strchr(cmd, '/')) { // File name can NOT contain '/', so cmd can't be program in PATH
+          if (execv(cmd, argv) == -1) {
+            if (errno == 13) { // Permission denied
+              struct stat stat_buf;
+              stat(cmd, &stat_buf);
+              if (S_ISDIR(stat_buf.st_mode)) { // A directory
+                printf("%s: Is a directory\n", cmd);
+              } else { // A file
+                perror(cmd);
+              }
+            } else if (exe[0] == '~') {
+              printf("%s: No such file or directory\n", exe);
+            } else {
+              perror(cmd);
+            }
+          }
+        } else {
+          char* env_path = getenv("PATH");
+          size_t cmd_len = strlen(cmd);
+          char* temp = strtok(env_path, ":");
+          while (temp != NULL) {
+            size_t temp_len = strlen(temp);
+            char* path = malloc(temp_len + 1 + cmd_len + 1);
+            strcpy(path, temp);
+            path[temp_len] = '/';
+            strcpy(path + temp_len + 1, cmd);
+            if (access(path, X_OK) == 0) {
+              execv(path, argv);
+            }
+            free(path);
+            temp = strtok(NULL, ":");
+          }
+          printf("%s: command not found\n", cmd);
+        }
+        free(cmd);
+        free(argv);
+        tokens_destroy(tokens);
+        return -1;
       } else {
         int status;
         wait(&status);
