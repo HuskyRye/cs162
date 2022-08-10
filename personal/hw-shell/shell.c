@@ -165,8 +165,24 @@ int main(unused int argc, unused char* argv[]) {
     if (fundex >= 0) {
       cmd_table[fundex].fun(tokens);
     } else {
-      /* REPLACE this to run commands as programs. */
-      fprintf(stdout, "This shell doesn't know how to run programs.\n");
+      pid_t pid = fork();
+      if (pid < 0) {
+        perror("");
+      } else if (pid == 0) {
+        size_t tokens_len = tokens_get_length(tokens);
+        char** argv = malloc(sizeof(char*) * (tokens_len + 1));
+        for (int i = 0; i < tokens_len; ++i) {
+          argv[i] = tokens_get_token(tokens, i);
+        }
+        argv[tokens_len] = NULL;
+        if (execv(tokens_get_token(tokens, 0), argv) == -1) {
+          perror(tokens_get_token(tokens, 0));
+          return -1;
+        }
+      } else {
+        int status;
+        wait(&status);
+      }
     }
 
     if (shell_is_interactive)
