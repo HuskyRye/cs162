@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#include <pwd.h>
 
 #include "tokenizer.h"
 
@@ -30,6 +31,8 @@ pid_t shell_pgid;
 
 int cmd_exit(struct tokens* tokens);
 int cmd_help(struct tokens* tokens);
+int cmd_pwd(struct tokens* tokens);
+int cmd_cd(struct tokens* tokens);
 
 /* Built-in command functions take token array (see parse.h) and return int */
 typedef int cmd_fun_t(struct tokens* tokens);
@@ -44,6 +47,8 @@ typedef struct fun_desc {
 fun_desc_t cmd_table[] = {
     {cmd_help, "?", "show this help menu"},
     {cmd_exit, "exit", "exit the command shell"},
+    {cmd_pwd, "pwd", "print name of current/working director"},
+    {cmd_cd, "cd", ""},
 };
 
 /* Prints a helpful description for the given command */
@@ -55,6 +60,56 @@ int cmd_help(unused struct tokens* tokens) {
 
 /* Exits this shell */
 int cmd_exit(unused struct tokens* tokens) { exit(0); }
+
+/* Print name of current/working director */
+int cmd_pwd(unused struct tokens* tokens) {
+  char* path = getcwd(NULL, 0);
+  puts(path);
+  free(path);
+  return 0;
+}
+
+int cmd_cd(unused struct tokens* tokens) {
+  if (tokens->tokens_length > 2) {
+    fprintf(stderr, "cd: too many arguments\n");
+    return -1;
+  }
+  if (tokens->tokens_length == 1) {
+    const char* home = getenv("HOME");
+    if (home == NULL) {
+      fprintf(stderr, "cd: HOME not set\n");
+      return -1;
+    }
+    chdir(home);
+  } else {
+    const char* path = (tokens->tokens[1]);
+    if (path[0] == '~') {
+      uid_t uid = getuid();
+      struct passwd* pwd = getpwuid(uid);
+      if (!pwd) {
+        printf("User with %u ID is unknown.\n", uid);
+        return -1;
+      }
+      const char* home = pwd->pw_dir;
+      size_t home_len = strlen(home);
+      char* dir = malloc(home_len + strlen(path));
+      strcpy(dir, home);
+      strcpy(dir + home_len, path + 1);
+      if (chdir(dir) == -1) {
+        fprintf(stderr, "cd: ");
+        perror(path);
+        free(dir);
+        return -1;
+      }
+      free(dir);
+    } else if (chdir(path) == -1) {
+      fprintf(stderr, "cd: ");
+      perror(path);
+      return -1;
+    }
+  }
+  return 0;
+}
 
 /* Looks up the built-in command, if it exists. */
 int lookup(char cmd[]) {

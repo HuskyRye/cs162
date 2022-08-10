@@ -1,7 +1,12 @@
 #pragma once
 
 /* A struct that represents a list of words. */
-struct tokens;
+struct tokens {
+  size_t tokens_length;
+  char** tokens;
+  size_t buffers_length;
+  char** buffers;
+};
 
 /* Turn a string into a list of words. */
 struct tokens* tokenize(const char* line);

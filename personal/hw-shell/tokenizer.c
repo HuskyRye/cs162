@@ -3,13 +3,6 @@
 #include <string.h>
 #include "tokenizer.h"
 
-struct tokens {
-  size_t tokens_length;
-  char** tokens;
-  size_t buffers_length;
-  char** buffers;
-};
-
 static void* vector_push(char*** pointer, size_t* size, void* elem) {
   *pointer = (char**)realloc(*pointer, sizeof(char*) * (*size + 1));
   (*pointer)[*size] = elem;
