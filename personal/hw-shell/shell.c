@@ -177,10 +177,31 @@ int main(unused int argc, unused char* argv[]) {
       } else if (pid == 0) { // new process
         size_t tokens_len = tokens_get_length(tokens);
         char** argv = malloc(sizeof(char*) * (tokens_len + 1));
+        char** p = argv;
         for (int i = 0; i < tokens_len; ++i) {
-          argv[i] = tokens_get_token(tokens, i);
+          char* token = tokens_get_token(tokens, i);
+          if (token[0] == '>') {
+            ++i;
+            token = tokens_get_token(tokens, i);
+            int fd = open(token, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+            dup2(fd, STDOUT_FILENO);
+          } else if (token[0] == '<') {
+            ++i;
+            token = tokens_get_token(tokens, i);
+            int fd = open(token, O_RDONLY);
+            if (fd == -1) {
+              perror(token);
+              free(argv);
+              tokens_destroy(tokens);
+              return -1;
+            }
+            dup2(fd, STDIN_FILENO);
+          } else {
+            *p = token;
+            ++p;
+          }
         }
-        argv[tokens_len] = NULL;
+        *p = NULL;
         const char* exe = tokens_get_token(tokens, 0);
         size_t exe_len = strlen(exe);
         char* cmd;
