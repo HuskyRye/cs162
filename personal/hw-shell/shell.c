@@ -239,22 +239,33 @@ void child_process(int start, int end, struct tokens* tokens) {
   exit(-1);
 }
 
+static pid_t session_pgid = 0;
+
 int execute(int read_fd, int* pipe_fd, int start, int end, struct tokens* tokens) {
-  pid_t pid = fork();
-  if (pid == -1) {
+  pid_t cpid = fork();
+  if (cpid == -1) {
     perror("fork");
     return -1;
-  } else if (pid == 0) { /* Child process */
+  } else if (cpid == 0) { /* Child process */
     if (read_fd != -1) {
       dup2(read_fd, STDIN_FILENO); // Read from previous pipe's read end
     }
     if (pipe_fd != NULL) {
       dup2(pipe_fd[1], STDOUT_FILENO); // Write to current pipe's write end
     }
+    if (session_pgid == 0) {
+      setpgrp();
+    } else {
+      setpgid(0, session_pgid);
+    }
+    signal(SIGINT, SIG_DFL);
+    signal(SIGTTOU, SIG_DFL);
     child_process(start, end, tokens); // NORETURN
   } else {                             /* Parent process */
-    int status;
-    wait(&status);
+    if (session_pgid == 0) {
+      session_pgid = cpid;
+      tcsetpgrp(STDIN_FILENO, session_pgid);
+    }
   }
   return 0;
 }
@@ -264,6 +275,7 @@ int run_programs(struct tokens* tokens) {
   int read_fd = -1;          // Previous pipe's read end
   int pipe_fd[2] = {-1, -1}; // Next read, current write
   int start = 0;
+  int process_num = 0;
   for (int i = 0; i < tokens_len; ++i) {
     char* token = tokens_get_token(tokens, i);
     if (token[0] == '|') {
@@ -282,6 +294,7 @@ int run_programs(struct tokens* tokens) {
         close(pipe_fd[1]);
         return -1;
       }
+      ++process_num;
       if (read_fd != -1) {
         close(read_fd);
       }
@@ -297,14 +310,21 @@ int run_programs(struct tokens* tokens) {
     }
     return -1;
   }
+  ++process_num;
   if (read_fd != -1) {
     close(read_fd);
   }
+  for (int i = 0; i < process_num; ++i) {
+    wait(NULL);
+  }
+  tcsetpgrp(STDIN_FILENO, getpgrp());
   return 0;
 }
 
 int main(unused int argc, unused char* argv[]) {
   init_shell();
+  signal(SIGINT, SIG_IGN);
+  signal(SIGTTOU, SIG_IGN);
 
   static char line[4096];
   int line_num = 0;
@@ -324,6 +344,7 @@ int main(unused int argc, unused char* argv[]) {
       cmd_table[fundex].fun(tokens);
     } else {
       run_programs(tokens);
+      session_pgid = 0;
     }
 
     if (shell_is_interactive)
