@@ -39,12 +39,23 @@ void serve_file(int fd, char* path) {
 
   /* TODO: PART 2 */
   /* PART 2 BEGIN */
+  struct stat buf;
+  stat(path, &buf);
+  char content_length[12];
+  snprintf(content_length, sizeof(content_length), "%ld", buf.st_size);
 
   http_start_response(fd, 200);
   http_send_header(fd, "Content-Type", http_get_mime_type(path));
-  http_send_header(fd, "Content-Length", "0"); // TODO: change this line too
+  http_send_header(fd, "Content-Length", content_length); // TODO: change this line too
   http_end_headers(fd);
 
+  int fd2 = open(path, O_RDONLY);
+  char buffer[1024];
+  ssize_t bytes_read = 0;
+  while ((bytes_read = read(fd2, buffer, sizeof(buffer))) > 0) {
+    write(fd, buffer, bytes_read);
+  }
+  close(fd2);
   /* PART 2 END */
 }
 
@@ -57,13 +68,22 @@ void serve_directory(int fd, char* path) {
   /* PART 3 BEGIN */
 
   // TODO: Open the directory (Hint: opendir() may be useful here)
+  DIR* dir = opendir(path);
 
   /**
    * TODO: For each entry in the directory (Hint: look at the usage of readdir() ),
    * send a string containing a properly formatted HTML. (Hint: the http_format_href()
    * function in libhttp.c may be useful here)
    */
-
+  struct dirent* dp;
+  while ((dp = readdir(dir)) != NULL) {
+    char* filename = dp->d_name;
+    int length = strlen("<a href=\"//\"></a><br/>") + strlen(path) + strlen(filename) * 2 + 1;
+    char buffer[length];
+    http_format_href(buffer, path, filename);
+    write(fd, buffer, length);
+  }
+  closedir(dir);
   /* PART 3 END */
 }
 
@@ -117,7 +137,24 @@ void handle_files_request(int fd) {
    */
 
   /* PART 2 & 3 BEGIN */
-
+  struct stat buf;
+  if (stat(path, &buf) == -1) {
+    http_start_response(fd, 404);
+  } else {
+    if (S_ISDIR(buf.st_mode)) {
+      int length = strlen(path) + strlen("/index.html") + 1;
+      char index_path[length];
+      http_format_index(index_path, path);
+      struct stat buf2;
+      if (stat(index_path, &buf2) == -1) {
+        serve_directory(fd, path);
+      } else {
+        serve_file(fd, index_path);
+      }
+    } else {
+      serve_file(fd, path);
+    }
+  }
   /* PART 2 & 3 END */
 
   close(fd);
@@ -263,7 +300,14 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
    */
 
   /* PART 1 BEGIN */
-
+  if (bind(*socket_number, &server_address, sizeof(server_address)) == -1) {
+    perror("bind");
+    exit(errno);
+  }
+  if (listen(*socket_number, 1024) == -1) {
+    perror("listen");
+    exit(errno);
+  }
   /* PART 1 END */
   printf("Listening on port %d...\n", server_port);
 
