@@ -75,6 +75,15 @@ struct http_request* http_request_parse(int fd) {
   return NULL;
 }
 
+void free_request(struct http_request* request) {
+  if (request == NULL) {
+    return;
+  }
+  free(request->method);
+  free(request->path);
+  free(request);
+}
+
 char* http_get_response_message(int status_code) {
   switch (status_code) {
     case 100:

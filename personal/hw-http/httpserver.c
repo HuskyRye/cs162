@@ -123,6 +123,7 @@ void handle_files_request(int fd) {
     http_start_response(fd, 403);
     http_send_header(fd, "Content-Type", "text/html");
     http_end_headers(fd);
+    free_request(request);
     close(fd);
     return;
   }
@@ -163,7 +164,8 @@ void handle_files_request(int fd) {
     }
   }
   /* PART 2 & 3 END */
-
+  free(path);
+  free_request(request);
   close(fd);
   return;
 }
@@ -310,7 +312,7 @@ void* thread_server_handler(void* void_args) {
   struct thread_server_handler_args* args = (struct thread_server_handler_args*)void_args;
   pthread_detach(pthread_self());
   args->request_handler(args->client_socket_fd);
-  free(args);
+  free(void_args);
   pthread_exit(0);
 }
 
