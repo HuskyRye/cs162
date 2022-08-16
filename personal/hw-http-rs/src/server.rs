@@ -6,7 +6,13 @@ use crate::http::*;
 use crate::stats::*;
 
 use clap::Parser;
-use tokio::net::TcpStream;
+use tokio::fs;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpListener, TcpStream};
+
+use bytes::BytesMut;
 
 use anyhow::Result;
 
@@ -41,12 +47,38 @@ pub fn main() -> Result<()> {
 
 async fn listen(port: u16) -> Result<()> {
     // Hint: you should call `handle_socket` in this function.
-    todo!("TODO: Part 2")
+    let listener = TcpListener::bind(("0.0.0.0", port)).await?;
+    loop {
+        let (socket, _) = listener.accept().await?;
+        tokio::spawn(async move { handle_socket(socket).await });
+    }
 }
 
 // Handles a single connection via `socket`.
 async fn handle_socket(mut socket: TcpStream) -> Result<()> {
-    todo!("TODO: Part 3")
+    let request = parse_request(&mut socket).await?;
+    let path = format!(".{}", request.path);
+    match fs::metadata(&path).await {
+        Ok(metadata) => {
+            start_response(&mut socket, 200).await?;
+            send_header(&mut socket, "Content-Type", get_mime_type(&path)).await?;
+            send_header(&mut socket, "Content-Length", &metadata.len().to_string()).await?;
+            end_headers(&mut socket).await?;
+
+            let mut file = File::open(&path).await?;
+            let mut buffer = BytesMut::with_capacity(1024);
+
+            while file.read_buf(&mut buffer).await? > 0 {
+                println!("write {} bytes", buffer.len());
+                socket.write_all_buf(&mut buffer).await?;
+            }
+        }
+        Err(_) => {
+            start_response(&mut socket, 404).await?;
+            end_headers(&mut socket).await?;
+        }
+    };
+    Ok(())
 }
 
 // You are free (and encouraged) to add other funtions to this file.
