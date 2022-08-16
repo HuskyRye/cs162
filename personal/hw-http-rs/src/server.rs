@@ -1,4 +1,5 @@
 use std::env;
+use std::path::Path;
 
 use crate::args;
 
@@ -7,7 +8,7 @@ use crate::stats::*;
 
 use clap::Parser;
 use tokio::fs;
-use tokio::fs::File;
+use tokio::fs::{read_dir, File};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
@@ -54,30 +55,67 @@ async fn listen(port: u16) -> Result<()> {
     }
 }
 
+async fn serve_file(mut socket: TcpStream, path: &str) -> Result<()> {
+    start_response(&mut socket, 200).await?;
+    send_header(&mut socket, "Content-Type", get_mime_type(path)).await?;
+    let len = fs::metadata(path).await?.len();
+    send_header(&mut socket, "Content-Length", &(len.to_string())).await?;
+    end_headers(&mut socket).await?;
+
+    let mut file = File::open(path).await?;
+    let mut buffer = BytesMut::with_capacity(1024);
+
+    while file.read_buf(&mut buffer).await? > 0 {
+        socket.write_all_buf(&mut buffer).await?;
+    }
+    Ok(())
+}
+
+async fn serve_directory(mut socket: TcpStream, path: &str) -> Result<()> {
+    let mut content = String::new();
+    let mut dir = read_dir(path).await?;
+    content.push_str("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\"\n</head>\n<body>\n");
+    content.push_str(&format_href(
+        Path::new(&format!("{}/../", path)).to_str().unwrap(),
+        "..",
+    ));
+    content.push_str(&format_href(path, "."));
+    while let Some(entry) = dir.next_entry().await? {
+        content.push_str(&format_href(
+            entry.path().to_str().unwrap(),
+            entry.file_name().to_str().unwrap(),
+        ));
+    }
+    content.push_str("\n</body>\n</html>\n");
+    start_response(&mut socket, 200).await?;
+    send_header(&mut socket, "Content-Type", "text/html").await?;
+    send_header(&mut socket, "Content-Length", &(content.len().to_string())).await?;
+    end_headers(&mut socket).await?;
+    socket.write_all(content.as_bytes()).await?;
+    Ok(())
+}
+
 // Handles a single connection via `socket`.
 async fn handle_socket(mut socket: TcpStream) -> Result<()> {
     let request = parse_request(&mut socket).await?;
-    let path = format!(".{}", request.path);
-    match fs::metadata(&path).await {
-        Ok(metadata) => {
-            start_response(&mut socket, 200).await?;
-            send_header(&mut socket, "Content-Type", get_mime_type(&path)).await?;
-            send_header(&mut socket, "Content-Length", &metadata.len().to_string()).await?;
-            end_headers(&mut socket).await?;
+    let request_path = format!(".{}", request.path);
 
-            let mut file = File::open(&path).await?;
-            let mut buffer = BytesMut::with_capacity(1024);
-
-            while file.read_buf(&mut buffer).await? > 0 {
-                println!("write {} bytes", buffer.len());
-                socket.write_all_buf(&mut buffer).await?;
+    let path = Path::new(&request_path);
+    if path.exists() {
+        if path.is_dir() {
+            let index_path = format_index(&request_path);
+            if Path::new(&index_path).exists() {
+                serve_file(socket, &index_path).await?;
+            } else {
+                serve_directory(socket, &request_path).await?;
             }
+        } else if path.is_file() {
+            serve_file(socket, &request_path).await?;
         }
-        Err(_) => {
-            start_response(&mut socket, 404).await?;
-            end_headers(&mut socket).await?;
-        }
-    };
+    } else {
+        start_response(&mut socket, 404).await?;
+        end_headers(&mut socket).await?;
+    }
     Ok(())
 }
 
