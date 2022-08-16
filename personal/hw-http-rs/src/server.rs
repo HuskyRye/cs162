@@ -1,5 +1,6 @@
 use std::env;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::args;
 
@@ -12,6 +13,7 @@ use tokio::fs::{read_dir, File};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::RwLock;
 
 use bytes::BytesMut;
 
@@ -38,20 +40,24 @@ pub fn main() -> Result<()> {
     log::info!("Directory:\t\t{}", &args.files);
     log::info!("----------------------------------");
 
+    // Initialize a new StatsPtr instance
+    let stats_ptr = StatsPtr::new(RwLock::new(Stats::new()));
+
     // Initialize a thread pool that starts running `listen`
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .worker_threads(args.num_threads)
         .build()?
-        .block_on(listen(args.port))
+        .block_on(listen(args.port, stats_ptr))
 }
 
-async fn listen(port: u16) -> Result<()> {
+async fn listen(port: u16, stats_ptr: StatsPtr) -> Result<()> {
     // Hint: you should call `handle_socket` in this function.
     let listener = TcpListener::bind(("0.0.0.0", port)).await?;
     loop {
         let (socket, _) = listener.accept().await?;
-        tokio::spawn(async move { handle_socket(socket).await });
+        let cloned = Arc::clone(&stats_ptr);
+        tokio::spawn(async move { handle_socket(socket, cloned).await });
     }
 }
 
@@ -96,25 +102,37 @@ async fn serve_directory(mut socket: TcpStream, path: &str) -> Result<()> {
 }
 
 // Handles a single connection via `socket`.
-async fn handle_socket(mut socket: TcpStream) -> Result<()> {
+async fn handle_socket(mut socket: TcpStream, stats_ptr: StatsPtr) -> Result<()> {
     let request = parse_request(&mut socket).await?;
-    let request_path = format!(".{}", request.path);
-
-    let path = Path::new(&request_path);
-    if path.exists() {
-        if path.is_dir() {
-            let index_path = format_index(&request_path);
-            if Path::new(&index_path).exists() {
-                serve_file(socket, &index_path).await?;
-            } else {
-                serve_directory(socket, &request_path).await?;
-            }
-        } else if path.is_file() {
-            serve_file(socket, &request_path).await?;
+    if request.path == "/stats" {
+        let stats = stats_ptr.read().await;
+        start_response(&mut socket, 200).await?;
+        send_header(&mut socket, "Content-Type", "text/plain").await?;
+        end_headers(&mut socket).await?;
+        for (status_code, counts) in stats.items() {
+            let msg = format!("{}: {}\n", response_message(status_code), counts);
+            socket.write_all((&msg).as_bytes()).await?;
         }
     } else {
-        start_response(&mut socket, 404).await?;
-        end_headers(&mut socket).await?;
+        let request_path = format!(".{}", request.path);
+        let path = Path::new(&request_path);
+        if path.exists() {
+            if path.is_dir() {
+                let index_path = format_index(&request_path);
+                if Path::new(&index_path).exists() {
+                    serve_file(socket, &index_path).await?;
+                } else {
+                    serve_directory(socket, &request_path).await?;
+                }
+            } else if path.is_file() {
+                serve_file(socket, &request_path).await?;
+            }
+            incr(&stats_ptr, 200).await;
+        } else {
+            start_response(&mut socket, 404).await?;
+            end_headers(&mut socket).await?;
+            incr(&stats_ptr, 404).await;
+        }
     }
     Ok(())
 }
