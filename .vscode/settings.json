@@ -18,6 +18,8 @@
         "cstdlib": "c",
         "istream": "c",
         "limits": "c",
-        "malloc.h": "c"
-    }
+        "malloc.h": "c",
+        "thread.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
 }
