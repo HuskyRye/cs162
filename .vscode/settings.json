@@ -19,7 +19,8 @@
         "istream": "c",
         "limits": "c",
         "malloc.h": "c",
-        "thread.h": "c"
+        "thread.h": "c",
+        "init.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }
