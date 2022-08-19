@@ -91,7 +91,10 @@ struct thread {
   struct list_elem allelem;  /* List element for all threads list. */
 
   /* Shared between thread.c and synch.c. */
-  struct list_elem elem; /* List element. */
+  struct list_elem elem;  /* List element. */
+  struct list locks;      /* Locks that the thread holding. */
+  struct lock* lock_wait; /* Lock that the thread waiting. */
+  int origin_priority;    /* Priority before thread acquire any lock. */
 
   /* For timer_sleep */
   struct list_elem sleep_elem; /* Sleep List element. */

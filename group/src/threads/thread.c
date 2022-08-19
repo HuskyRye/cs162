@@ -220,9 +220,7 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
 
   /* Add to run queue. */
   thread_unblock(t);
-  if (thread_current()->priority < priority) {
-    thread_yield();
-  }
+  thread_yield();
 
   return tid;
 }
@@ -358,8 +356,12 @@ bool prio_greater(const struct list_elem* a, const struct list_elem* b, void* au
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) {
-  thread_current()->priority = new_priority;
-  thread_yield();
+  struct thread* cur = thread_current();
+  cur->origin_priority = new_priority;
+  if (list_empty(&cur->locks) || new_priority > cur->priority) {
+    cur->priority = new_priority;
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -460,8 +462,11 @@ static void init_thread(struct thread* t, const char* name, int priority) {
   strlcpy(t->name, name, sizeof t->name);
   t->stack = (uint8_t*)t + PGSIZE;
   t->priority = priority;
+  t->origin_priority = priority;
   t->pcb = NULL;
   t->magic = THREAD_MAGIC;
+  list_init(&t->locks);
+  t->lock_wait = NULL;
 
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);
