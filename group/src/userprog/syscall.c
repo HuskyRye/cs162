@@ -65,7 +65,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       break;
     case SYS_EXEC:
       verify_string((const char*)args[1]);
+      lock_acquire(&file_syscalls_lock);
       f->eax = process_execute((const char*)args[1]);
+      lock_release(&file_syscalls_lock);
       break;
     case SYS_WAIT:
       f->eax = process_wait(args[1]);
