@@ -72,6 +72,7 @@ struct process {
   int fd;                      /* Next fd(file descriptor) */
   struct list pthreads;        /* Pthreads */
   int num_pthreads;            /* Num of pthreads spawned. */
+  struct semaphore main_join;  /* Semaphore for join on main thread. */
   struct list locks;           /* User-Level locks. */
   lock_t ld;                   /* Next ld(lock descriptor) */
   struct list semaphores;      /* User-Level semaphores. */
@@ -107,7 +108,7 @@ struct pthread_join_info {
 
 tid_t pthread_execute(stub_fun, pthread_fun, void*);
 tid_t pthread_join(tid_t);
-void pthread_exit(void);
+void pthread_exit(const void*);
 void pthread_exit_main(void);
 
 #endif /* userprog/process.h */

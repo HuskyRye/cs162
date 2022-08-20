@@ -156,6 +156,7 @@ static void start_process(void* load_info_) {
     t->pcb->fd = 2;
     list_init(&(t->pcb->pthreads));
     t->pcb->num_pthreads = 0;
+    sema_init(&t->pcb->main_join, 0);
     list_init(&(t->pcb->locks));
     t->pcb->ld = 0;
     list_init(&(t->pcb->semaphores));
@@ -185,14 +186,6 @@ static void start_process(void* load_info_) {
     sema_init(&(wait_info->sema_wait), 0);
     list_push_back(&(load_info->parent->children), &(wait_info->elem));
     t->pcb->wait_info = wait_info;
-  }
-
-  /* Put main thread into threads list. */
-  if (success) {
-    struct pthread_join_info* join_info = malloc(sizeof(struct pthread_join_info));
-    join_info->tid = t->tid;
-    sema_init(&join_info->sema_join, 0);
-    list_push_back(&t->pcb->pthreads, &join_info->elem);
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
@@ -256,6 +249,8 @@ int process_wait(pid_t child_pid) {
 /* Free the current process's resources. */
 void process_exit(void) {
   struct thread* cur = thread_current();
+  if (is_main_thread(cur, cur->pcb))
+    pthread_exit_main();
   uint32_t* pd;
 
   /* If this thread does not have a PCB, don't worry */
@@ -301,13 +296,6 @@ void process_exit(void) {
     struct file_info* info_to_free =
         list_entry(list_pop_front(&(cur->pcb->files)), struct file_info, elem);
     file_close(info_to_free->fp);
-    free(info_to_free);
-  }
-
-  /* Remove all pthread join info, free up memory. */
-  while (!list_empty(&cur->pcb->pthreads)) {
-    struct pthread_join_info* info_to_free =
-        list_entry(list_pop_front(&cur->pcb->pthreads), struct pthread_join_info, elem);
     free(info_to_free);
   }
 
@@ -762,6 +750,7 @@ static void start_pthread(void* exec_) {
     sema_init(&join_info->sema_join, 0);
     list_push_back(&cur->pcb->pthreads, &join_info->elem);
     (cur->pcb->num_pthreads)++;
+    cur->join_info = join_info;
   }
 
   sema_up(&info->sema_load);
@@ -792,6 +781,10 @@ tid_t pthread_join(tid_t tid) {
   if (tid == TID_ERROR || tid == cur->tid) {
     return -1;
   }
+  if (tid == cur->pcb->main_thread->tid) {
+    sema_down(&cur->pcb->main_join);
+    return tid;
+  }
   struct list* lst = &(cur->pcb->pthreads);
   for (struct list_elem* e = list_begin(lst); e != list_end(lst); e = list_next(e)) {
     struct pthread_join_info* join_info = list_entry(e, struct pthread_join_info, elem);
@@ -819,17 +812,12 @@ tid_t pthread_join(tid_t tid) {
 
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. */
-void pthread_exit(void) {
+void pthread_exit(const void* user_stack) {
   struct thread* cur = thread_current();
-  tid_t tid = cur->tid;
-  struct list* lst = &cur->pcb->pthreads;
-  for (struct list_elem* e = list_begin(lst); e != list_end(lst); e = list_next(e)) {
-    struct pthread_join_info* join_info = list_entry(e, struct pthread_join_info, elem);
-    if (join_info->tid == tid) {
-      sema_up(&join_info->sema_join);
-      thread_exit();
-    }
-  }
+  palloc_free_page(pagedir_get_page(cur->pcb->pagedir, pg_round_down(user_stack)));
+  pagedir_clear_page(cur->pcb->pagedir, pg_round_down(user_stack));
+  sema_up(&cur->join_info->sema_join);
+  thread_exit();
   NOT_REACHED();
 }
 
@@ -842,12 +830,14 @@ void pthread_exit(void) {
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. */
 void pthread_exit_main(void) {
-  struct list* lst = &thread_current()->pcb->pthreads;
-  struct pthread_join_info* join_info = list_entry(list_front(lst), struct pthread_join_info, elem);
-  sema_up(&join_info->sema_join);
+  struct process* cur = thread_current()->pcb;
+  sema_up(&cur->main_join);
+  struct list* lst = &cur->pthreads;
   while (!list_empty(lst)) {
-    join_info = list_entry(list_pop_front(lst), struct pthread_join_info, elem);
+    struct pthread_join_info* join_info =
+        list_entry(list_front(lst), struct pthread_join_info, elem);
     sema_down(&join_info->sema_join);
+    list_pop_front(lst);
     free(join_info);
   }
 }

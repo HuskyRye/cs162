@@ -100,6 +100,8 @@ struct thread {
   struct list_elem sleep_elem; /* Sleep List element. */
   int64_t ticks;               /* Ticks to sleep. */
 
+  struct pthread_join_info* join_info;
+
 #ifdef USERPROG
   /* Owned by process.c. */
   struct process* pcb; /* Process control block if this thread is a userprog */

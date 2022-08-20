@@ -211,10 +211,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     }
     case SYS_PT_EXIT: {
       if (thread_current() == cur->main_thread) {
-        pthread_exit_main();
         exit(0);
       } else
-        pthread_exit();
+        pthread_exit(f->esp);
       break;
     }
     case SYS_PT_JOIN:
