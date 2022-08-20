@@ -719,6 +719,8 @@ tid_t pthread_execute(stub_fun sf, pthread_fun tf, void* arg) {
 
   tid_t tid = thread_create(thread_current()->name, PRI_DEFAULT, start_pthread, &load_info);
   sema_down(&(load_info.sema_load));
+  if (!load_info.load_success)
+    return TID_ERROR;
   return tid;
 }
 
@@ -739,7 +741,7 @@ static void start_pthread(void* exec_) {
   if_.eflags = FLAG_IF | FLAG_MBS;
   asm("fsave (%0)" : : "g"(&if_.fpu));
 
-  bool success = setup_thread(&if_.eip, &if_.esp, info);
+  bool success = info->load_success = setup_thread(&if_.eip, &if_.esp, info);
 
   struct thread* cur = thread_current();
 

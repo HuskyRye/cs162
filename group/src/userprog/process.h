@@ -97,6 +97,7 @@ struct pthread_load_info {
   pthread_fun tfun;
   void* arg;
   struct semaphore sema_load;
+  bool load_success;
 };
 
 struct pthread_join_info {
