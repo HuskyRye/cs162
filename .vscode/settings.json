@@ -20,7 +20,8 @@
         "limits": "c",
         "malloc.h": "c",
         "thread.h": "c",
-        "init.h": "c"
+        "init.h": "c",
+        "main.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

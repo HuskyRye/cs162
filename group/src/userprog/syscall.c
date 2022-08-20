@@ -22,7 +22,6 @@ void syscall_init(void) {
   intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-static void exit(int status);
 static void verify_vaddr(void*, unsigned size);
 static void verify_arg_vaddr(uint32_t* vaddr);
 static void verify_string(const char* str);
@@ -36,9 +35,11 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   switch (args[0]) {
     case SYS_READ:
     case SYS_WRITE:
+    case SYS_PT_CREATE:
       verify_arg_vaddr(&args[3]);
     case SYS_CREATE:
     case SYS_SEEK:
+    case SYS_SEMA_INIT:
       verify_arg_vaddr(&args[2]);
     case SYS_EXIT:
     case SYS_EXEC:
@@ -50,8 +51,16 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     case SYS_CLOSE:
     case SYS_PRACTICE:
     case SYS_COMPUTE_E:
+    case SYS_PT_JOIN:
+    case SYS_LOCK_INIT:
+    case SYS_LOCK_ACQUIRE:
+    case SYS_LOCK_RELEASE:
+    case SYS_SEMA_DOWN:
+    case SYS_SEMA_UP:
       verify_arg_vaddr(&args[1]);
     case SYS_HALT:
+    case SYS_PT_EXIT:
+    case SYS_GET_TID:
     default:
       break;
   }
@@ -196,14 +205,98 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     case SYS_COMPUTE_E:
       f->eax = sys_sum_to_e(args[1]);
       break;
+    case SYS_PT_CREATE: {
+      f->eax = pthread_execute(args[1], args[2], args[3]);
+      break;
+    }
+    case SYS_PT_EXIT: {
+      if (thread_current() == cur->main_thread)
+        pthread_exit_main();
+      else
+        pthread_exit();
+      break;
+    }
+    case SYS_PT_JOIN:
+      f->eax = pthread_join(args[1]);
+      break;
+    case SYS_LOCK_INIT: {
+      lock_t* lock = (lock_t*)args[1];
+      if (lock == NULL) {
+        f->eax = false;
+        break;
+      }
+      verify_vaddr(lock, 1);
+      struct lock_info* lock_info = malloc(sizeof(struct lock_info));
+      if (lock_info == NULL) {
+        f->eax = false;
+      } else {
+        lock_init(&lock_info->lock);
+        lock_info->ld = cur->ld;
+        *lock = cur->ld;
+        cur->ld += 1;
+        list_push_back(&cur->locks, &lock_info->elem);
+        f->eax = true;
+      }
+      break;
+    }
+    case SYS_LOCK_ACQUIRE: {
+      lock_t* lock = (lock_t*)args[1];
+      if (lock == NULL) {
+        f->eax = false;
+        break;
+      }
+      verify_vaddr(lock, 1);
+      f->eax = false;
+      struct list_elem* e;
+      for (e = list_begin(&cur->locks); e != list_end(&cur->locks); e = list_next(e)) {
+        struct lock_info* lock_info = list_entry(e, struct lock_info, elem);
+        if (lock_info->ld == *lock) {
+          if (lock_held_by_current_thread(&lock_info->lock)) {
+            f->eax = false;
+          } else {
+            lock_acquire(&lock_info->lock);
+            f->eax = true;
+          }
+          break;
+        }
+      }
+      break;
+    }
+    case SYS_LOCK_RELEASE: {
+      lock_t* lock = (lock_t*)args[1];
+      if (lock == NULL) {
+        f->eax = false;
+        break;
+      }
+      verify_vaddr(lock, 1);
+      f->eax = false;
+      struct list_elem* e;
+      for (e = list_begin(&cur->locks); e != list_end(&cur->locks); e = list_next(e)) {
+        struct lock_info* lock_info = list_entry(e, struct lock_info, elem);
+        if (lock_info->ld == *lock) {
+          if (lock_held_by_current_thread(&lock_info->lock)) {
+            lock_release(&lock_info->lock);
+            f->eax = true;
+          } else {
+            f->eax = false;
+          }
+          break;
+        }
+      }
+      break;
+    }
+    case SYS_SEMA_INIT:
+      break;
+    case SYS_SEMA_DOWN:
+      break;
+    case SYS_SEMA_UP:
+      break;
+    case SYS_GET_TID:
+      f->eax = thread_current()->tid;
+      break;
     default:
       break;
   }
-}
-
-static void exit(int status) {
-  thread_current()->pcb->exit_status = status;
-  process_exit();
 }
 
 static inline bool valid_vaddr(uint8_t* vaddr) {

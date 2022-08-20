@@ -14,6 +14,10 @@
    the TID of the main thread of the process */
 typedef tid_t pid_t;
 
+/* Synchronization Types */
+typedef char lock_t;
+typedef char sema_t;
+
 /* Thread functions (Project 2: Multithreading) */
 typedef void (*pthread_fun)(void*);
 typedef void (*stub_fun)(pthread_fun, void*);
@@ -39,6 +43,12 @@ struct file_info {
   struct list_elem elem;
 };
 
+struct lock_info {
+  lock_t ld;
+  struct lock lock;
+  struct list_elem elem;
+};
+
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
    PCB from the TCB. All TCBs in a process will have a pointer
@@ -54,6 +64,12 @@ struct process {
   struct list children;        /* Child processes */
   struct list files;           /* Opend files */
   int fd;                      /* Next fd(file descriptor) */
+  struct list pthreads;        /* Pthreads */
+  int num_pthreads;            /* Num of pthreads spawned. */
+  struct list locks;           /* User-Level locks. */
+  lock_t ld;                   /* Next ld(lock descriptor) */
+  struct list semaphores;      /* User-Level semaphores. */
+  sema_t sd;                   /* Next sd(semaphore descriptor) */
 };
 
 void userprog_init(void);
@@ -61,12 +77,27 @@ void userprog_init(void);
 pid_t process_execute(const char* file_name);
 int process_wait(pid_t);
 void process_exit(void);
+void exit(int status);
 void process_activate(void);
 
 bool is_main_thread(struct thread*, struct process*);
 pid_t get_pid(struct process*);
 
 struct file* get_file(int fd);
+
+struct pthread_load_info {
+  stub_fun sfun;
+  pthread_fun tfun;
+  void* arg;
+  struct semaphore sema_load;
+};
+
+struct pthread_join_info {
+  tid_t tid;
+  bool joined;
+  struct semaphore sema_join;
+  struct list_elem elem;
+};
 
 tid_t pthread_execute(stub_fun, pthread_fun, void*);
 tid_t pthread_join(tid_t);
