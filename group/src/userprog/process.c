@@ -311,6 +311,20 @@ void process_exit(void) {
     free(info_to_free);
   }
 
+  /* Remove all lock info, free up memory. */
+  while (!list_empty(&cur->pcb->locks)) {
+    struct lock_info* info_to_free =
+        list_entry(list_pop_front(&cur->pcb->locks), struct lock_info, elem);
+    free(info_to_free);
+  }
+
+  /* Remove all semaphore info, free up memory. */
+  while (!list_empty(&cur->pcb->semaphores)) {
+    struct sema_info* info_to_free =
+        list_entry(list_pop_front(&cur->pcb->semaphores), struct sema_info, elem);
+    free(info_to_free);
+  }
+
   /* Free the PCB of this process and kill this thread
      Avoid race where PCB is freed before t->pcb is set to NULL
      If this happens, then an unfortuantely timed timer interrupt
@@ -774,16 +788,19 @@ static void start_pthread(void* exec_) {
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. */
 tid_t pthread_join(tid_t tid) {
-  if (tid == TID_ERROR) {
+  struct thread* cur = thread_current();
+  if (tid == TID_ERROR || tid == cur->tid) {
     return -1;
   }
-  struct list* lst = &(thread_current()->pcb->pthreads);
+  struct list* lst = &(cur->pcb->pthreads);
   for (struct list_elem* e = list_begin(lst); e != list_end(lst); e = list_next(e)) {
     struct pthread_join_info* join_info = list_entry(e, struct pthread_join_info, elem);
     if (join_info->tid == tid) {
       if (!join_info->joined) {
         join_info->joined = true;
         sema_down(&join_info->sema_join);
+        list_remove(e);
+        free(join_info);
         return tid;
       } else {
         return -1;
@@ -826,13 +843,11 @@ void pthread_exit(void) {
    now, it does nothing. */
 void pthread_exit_main(void) {
   struct list* lst = &thread_current()->pcb->pthreads;
-  struct pthread_join_info* join_info =
-      list_entry(list_pop_front(lst), struct pthread_join_info, elem);
+  struct pthread_join_info* join_info = list_entry(list_front(lst), struct pthread_join_info, elem);
   sema_up(&join_info->sema_join);
-  free(join_info);
-  for (struct list_elem* e = list_begin(lst); e != list_end(lst); e = list_next(e)) {
-    join_info = list_entry(e, struct pthread_join_info, elem);
-    pthread_join(join_info->tid);
+  while (!list_empty(lst)) {
+    join_info = list_entry(list_pop_front(lst), struct pthread_join_info, elem);
+    sema_down(&join_info->sema_join);
+    free(join_info);
   }
-  exit(0);
 }

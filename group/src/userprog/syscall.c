@@ -210,9 +210,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       break;
     }
     case SYS_PT_EXIT: {
-      if (thread_current() == cur->main_thread)
+      if (thread_current() == cur->main_thread) {
         pthread_exit_main();
-      else
+        exit(0);
+      } else
         pthread_exit();
       break;
     }
@@ -285,12 +286,64 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       }
       break;
     }
-    case SYS_SEMA_INIT:
+    case SYS_SEMA_INIT: {
+      sema_t* sema = (sema_t*)args[1];
+      if (sema == NULL || (int)args[2] < 0) {
+        f->eax = false;
+        break;
+      }
+      verify_vaddr(sema, 1);
+      struct sema_info* sema_info = malloc(sizeof(struct sema_info));
+      if (sema_info == NULL) {
+        f->eax = false;
+      } else {
+        sema_init(&sema_info->sema, args[2]);
+        sema_info->sd = cur->sd;
+        *sema = cur->sd;
+        cur->sd += 1;
+        list_push_back(&cur->semaphores, &sema_info->elem);
+        f->eax = true;
+      }
       break;
-    case SYS_SEMA_DOWN:
+    }
+    case SYS_SEMA_DOWN: {
+      sema_t* sema = (sema_t*)args[1];
+      if (sema == NULL) {
+        f->eax = false;
+        break;
+      }
+      verify_vaddr(sema, 1);
+      f->eax = false;
+      struct list_elem* e;
+      for (e = list_begin(&cur->semaphores); e != list_end(&cur->semaphores); e = list_next(e)) {
+        struct sema_info* sema_info = list_entry(e, struct sema_info, elem);
+        if (sema_info->sd == *sema) {
+          sema_down(&sema_info->sema);
+          f->eax = true;
+          break;
+        }
+      }
       break;
-    case SYS_SEMA_UP:
+    }
+    case SYS_SEMA_UP: {
+      sema_t* sema = (sema_t*)args[1];
+      if (sema == NULL) {
+        f->eax = false;
+        break;
+      }
+      verify_vaddr(sema, 1);
+      f->eax = false;
+      struct list_elem* e;
+      for (e = list_begin(&cur->semaphores); e != list_end(&cur->semaphores); e = list_next(e)) {
+        struct sema_info* sema_info = list_entry(e, struct sema_info, elem);
+        if (sema_info->sd == *sema) {
+          sema_up(&sema_info->sema);
+          f->eax = true;
+          break;
+        }
+      }
       break;
+    }
     case SYS_GET_TID:
       f->eax = thread_current()->tid;
       break;

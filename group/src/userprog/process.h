@@ -49,6 +49,12 @@ struct lock_info {
   struct list_elem elem;
 };
 
+struct sema_info {
+  sema_t sd;
+  struct semaphore sema;
+  struct list_elem elem;
+};
+
 /* The process control block for a given process. Since
    there can be multiple threads per process, we need a separate
    PCB from the TCB. All TCBs in a process will have a pointer
