@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package worker;
+
+service Worker {
+  // TODO: add your own RPCs here
+}
+
