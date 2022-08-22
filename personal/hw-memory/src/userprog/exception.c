@@ -6,6 +6,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "threads/palloc.h"
+#include "userprog/pagedir.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -98,6 +100,14 @@ static void kill(struct intr_frame* f) {
   }
 }
 
+static void grow_stack(uint32_t* pd, void* fault_addr) {
+  uint8_t* kpage = palloc_get_page(PAL_ZERO | PAL_USER);
+  if (kpage == NULL) {
+    syscall_exit(-1);
+  }
+  pagedir_set_page(pd, pg_round_down(fault_addr), kpage, true);
+}
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -147,8 +157,14 @@ static void page_fault(struct intr_frame* f) {
    * the kernel and end up here. These checks below will allow us to determine
    * that this happened and terminate the process appropriately.
    */
-  if (!user && t->in_syscall && is_user_vaddr(fault_addr))
-    syscall_exit(-1);
+  if (!user && t->in_syscall && is_user_vaddr(fault_addr)) {
+    if (fault_addr >= t->esp) {
+      grow_stack(t->pagedir, fault_addr);
+      asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(f) : "memory");
+    } else {
+      syscall_exit(-1);
+    }
+  }
 
   /*
    * If we faulted in user mode, then we assume it's an invalid memory access
@@ -156,8 +172,15 @@ static void page_fault(struct intr_frame* f) {
    * assume this; depending on the nature of the fault, the stack may need to
    * be grown.
    */
-  if (user)
-    syscall_exit(-1);
+  if (user) {
+    if (is_user_vaddr(fault_addr) &&
+        (fault_addr >= f->esp || fault_addr == f->esp - 32 || fault_addr == f->esp - 4)) {
+      grow_stack(t->pagedir, fault_addr);
+      asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(f) : "memory");
+    } else {
+      syscall_exit(-1);
+    }
+  }
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

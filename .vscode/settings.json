@@ -21,7 +21,8 @@
         "malloc.h": "c",
         "thread.h": "c",
         "init.h": "c",
-        "main.h": "c"
+        "main.h": "c",
+        "file.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }
