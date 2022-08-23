@@ -7,6 +7,8 @@
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "threads/palloc.h"
+#include "userprog/pagedir.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -76,6 +78,38 @@ static void syscall_close(int fd) {
   }
 }
 
+static void* syscall_sbrk(intptr_t increment) {
+  struct thread* t = thread_current();
+  void* brk_ = t->brk;
+  t->brk += increment;
+  if (t->brk > pg_round_up(brk_)) {
+    void* upage;
+    bool fail = false;
+    for (upage = pg_round_up(brk_); upage != pg_round_up(t->brk); upage += PGSIZE) {
+      void* kpage = palloc_get_page(PAL_ZERO | PAL_USER);
+      if (kpage == NULL) {
+        fail = true;
+        break;
+      }
+      pagedir_set_page(t->pagedir, upage, kpage, true);
+    }
+    if (fail) {
+      for (void* pg = pg_round_up(brk_); pg != upage; pg += PGSIZE) {
+        palloc_free_page(pagedir_get_page(t->pagedir, pg));
+        pagedir_clear_page(t->pagedir, pg);
+      }
+      t->brk = brk_;
+      return (void*)-1;
+    }
+  } else if (t->brk <= pg_round_down(brk_)) {
+    for (void* upage = pg_round_down(brk_); upage != pg_round_down(t->brk - 1); upage -= PGSIZE) {
+      palloc_free_page(pagedir_get_page(t->pagedir, upage));
+      pagedir_clear_page(t->pagedir, upage);
+    }
+  }
+  return brk_;
+}
+
 static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = (uint32_t*)f->esp;
   struct thread* t = thread_current();
@@ -110,6 +144,11 @@ static void syscall_handler(struct intr_frame* f) {
     case SYS_CLOSE:
       validate_buffer_in_user_region(&args[1], sizeof(uint32_t));
       syscall_close((int)args[1]);
+      break;
+
+    case SYS_SBRK:
+      validate_buffer_in_user_region(&args[1], sizeof(uint32_t));
+      f->eax = (uint32_t)syscall_sbrk((intptr_t)args[1]);
       break;
 
     default:

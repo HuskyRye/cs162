@@ -267,7 +267,9 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
             read_bytes = 0;
             zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
           }
-          if (!load_segment(file, file_page, (void*)mem_page, read_bytes, zero_bytes, writable))
+          if (load_segment(file, file_page, (void*)mem_page, read_bytes, zero_bytes, writable)) {
+            t->heap = t->brk = mem_page + read_bytes + zero_bytes;
+          } else
             goto done;
         } else
           goto done;

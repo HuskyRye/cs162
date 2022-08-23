@@ -105,7 +105,11 @@ static void grow_stack(uint32_t* pd, void* fault_addr) {
   if (kpage == NULL) {
     syscall_exit(-1);
   }
-  pagedir_set_page(pd, pg_round_down(fault_addr), kpage, true);
+  void* upage = pg_round_down(fault_addr);
+  if (!pagedir_set_page(pd, upage, kpage, true)) {
+    palloc_free_page(kpage);
+    syscall_exit(-1);
+  }
 }
 
 /* Page fault handler.  This is a skeleton that must be filled in
