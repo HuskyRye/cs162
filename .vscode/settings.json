@@ -22,7 +22,8 @@
         "thread.h": "c",
         "init.h": "c",
         "main.h": "c",
-        "file.h": "c"
+        "file.h": "c",
+        "synch.h": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

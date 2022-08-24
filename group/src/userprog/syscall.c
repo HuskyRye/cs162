@@ -13,6 +13,7 @@
 #include "devices/input.h"
 #include "devices/shutdown.h"
 #include "lib/string.h"
+#include "lib/float.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -206,7 +207,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       f->eax = sys_sum_to_e(args[1]);
       break;
     case SYS_PT_CREATE: {
-      f->eax = pthread_execute(args[1], args[2], args[3]);
+      f->eax = pthread_execute((stub_fun)args[1], (pthread_fun)args[2], (void*)args[3]);
       break;
     }
     case SYS_PT_EXIT: {

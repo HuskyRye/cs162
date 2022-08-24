@@ -692,8 +692,8 @@ bool setup_thread(void (**eip)(void), void** esp, struct pthread_load_info* info
   /* Put the arguments on the stack. */
   if (success) {
     uintptr_t* esp_ = (uintptr_t*)*esp - 2; // stack pointer align
-    *(--esp_) = info->arg;
-    *(--esp_) = info->tfun;
+    *(--esp_) = (uintptr_t)info->arg;
+    *(--esp_) = (uintptr_t)info->tfun;
     *(--esp_) = 0;
     *esp = esp_;
   }

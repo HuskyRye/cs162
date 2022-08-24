@@ -6,9 +6,131 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "threads/synch.h"
 
 /* Partition that contains the file system. */
 struct block* fs_device;
+
+/* Buffer Cache Entry */
+struct BCE {
+  bool valid;
+  bool dirty;
+  bool used;
+  int active;
+  int waiting;
+  struct condition cond;
+  block_sector_t sector;
+};
+
+#define BUFFER_CACHE_SIZE 64
+
+static struct lock buffer_cache_lock;
+static int buffer_cache_clock_head;
+static struct BCE buffer_cache_entrys[BUFFER_CACHE_SIZE];
+
+/* Buffer cache */
+static uint8_t buffer_cache[BUFFER_CACHE_SIZE][BLOCK_SECTOR_SIZE];
+
+static void buffer_cache_init(void) {
+  lock_init(&buffer_cache_lock);
+  buffer_cache_clock_head = 0;
+  for (int i = 0; i < BUFFER_CACHE_SIZE; ++i) {
+    struct BCE* buffer_cache_entry = &buffer_cache_entrys[i];
+    buffer_cache_entry->valid = false;
+    cond_init(&buffer_cache_entry->cond);
+  }
+}
+
+static int buffer_cache_acquire(block_sector_t sector, bool read) {
+  lock_acquire(&buffer_cache_lock);
+
+  // sector already in buffer
+  for (int i = 0; i < BUFFER_CACHE_SIZE; ++i) {
+    struct BCE* buffer_cache_entry = &buffer_cache_entrys[i];
+    if (buffer_cache_entry->valid && buffer_cache_entry->sector == sector) {
+      while (buffer_cache_entry->active) {
+        ++buffer_cache_entry->waiting;
+        cond_wait(&buffer_cache_entry->cond, &buffer_cache_lock);
+        --buffer_cache_entry->waiting;
+      }
+      ++buffer_cache_entry->active;
+      lock_release(&buffer_cache_lock);
+      return i;
+    }
+  }
+
+  // load sector into an invalid entry
+  for (int i = 0; i < BUFFER_CACHE_SIZE; ++i) {
+    struct BCE* buffer_cache_entry = &buffer_cache_entrys[i];
+    if (!buffer_cache_entry->valid) {
+      buffer_cache_entry->valid = true;
+      buffer_cache_entry->dirty = false;
+      buffer_cache_entry->active = 0;
+      buffer_cache_entry->waiting = 0;
+      buffer_cache_entry->sector = sector;
+      ++buffer_cache_entry->active;
+      lock_release(&buffer_cache_lock);
+      if (read)
+        block_read(fs_device, sector, buffer_cache[i]);
+      return i;
+    }
+  }
+
+  // evict an entry and load sector into that entry
+  while (true) {
+    struct BCE* buffer_cache_entry = &buffer_cache_entrys[buffer_cache_clock_head];
+    if ((buffer_cache_entry->active + buffer_cache_entry->waiting) == 0) {
+      if (buffer_cache_entry->used) {
+        buffer_cache_entry->used = false;
+      } else {
+        block_sector_t evict_sector = buffer_cache_entry->sector;
+        buffer_cache_entry->sector = sector;
+        int entry = buffer_cache_clock_head;
+        buffer_cache_clock_head = (buffer_cache_clock_head + 1) % BUFFER_CACHE_SIZE;
+        ++buffer_cache_entry->active;
+        lock_release(&buffer_cache_lock);
+        if (buffer_cache_entry->dirty) {
+          block_write(fs_device, evict_sector, buffer_cache[entry]);
+          buffer_cache_entry->dirty = false;
+        }
+        if (read)
+          block_read(fs_device, sector, buffer_cache[entry]);
+        return entry;
+      }
+    }
+    buffer_cache_clock_head = (buffer_cache_clock_head + 1) % BUFFER_CACHE_SIZE;
+  }
+}
+
+static void buffer_cache_release(int entry) {
+  struct BCE* buffer_cache_entry = &buffer_cache_entrys[entry];
+  lock_acquire(&buffer_cache_lock);
+  --buffer_cache_entry->active;
+  if (buffer_cache_entry->waiting) {
+    cond_signal(&buffer_cache_entry->cond, &buffer_cache_lock);
+  } else {
+    buffer_cache_entry->used = true;
+  }
+  lock_release(&buffer_cache_lock);
+}
+
+void buffer_cache_read(block_sector_t sector, uint8_t* buffer, off_t sector_ofs, off_t size) {
+  int entry = buffer_cache_acquire(sector, true);
+  memcpy(buffer, buffer_cache[entry] + sector_ofs, size);
+  buffer_cache_release(entry);
+}
+
+void buffer_cache_write(block_sector_t sector, uint8_t* buffer, off_t sector_ofs, off_t size) {
+  off_t sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
+  bool read = sector_ofs > 0 || size < sector_left;
+  int entry = buffer_cache_acquire(sector, read);
+  if (sector_ofs == 0 && size == sector_left) {
+    memset(buffer_cache[entry], 0, BLOCK_SECTOR_SIZE);
+  }
+  memcpy(buffer_cache[entry] + sector_ofs, buffer, size);
+  buffer_cache_entrys[entry].dirty = true;
+  buffer_cache_release(entry);
+}
 
 static void do_format(void);
 
@@ -21,6 +143,7 @@ void filesys_init(bool format) {
 
   inode_init();
   free_map_init();
+  buffer_cache_init();
 
   if (format)
     do_format();
