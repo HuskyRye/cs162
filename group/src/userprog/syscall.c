@@ -17,11 +17,7 @@
 
 static void syscall_handler(struct intr_frame*);
 
-struct lock file_syscalls_lock;
-void syscall_init(void) {
-  lock_init(&file_syscalls_lock);
-  intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
-}
+void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
 static void verify_vaddr(void*, unsigned size);
 static void verify_arg_vaddr(uint32_t* vaddr);
@@ -75,28 +71,21 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       break;
     case SYS_EXEC:
       verify_string((const char*)args[1]);
-      lock_acquire(&file_syscalls_lock);
       f->eax = process_execute((const char*)args[1]);
-      lock_release(&file_syscalls_lock);
       break;
     case SYS_WAIT:
       f->eax = process_wait(args[1]);
       break;
     case SYS_CREATE:
       verify_string((const char*)args[1]);
-      lock_acquire(&file_syscalls_lock);
       f->eax = filesys_create((const char*)args[1], args[2]);
-      lock_release(&file_syscalls_lock);
       break;
     case SYS_REMOVE:
       verify_string((const char*)args[1]);
-      lock_acquire(&file_syscalls_lock);
       f->eax = filesys_remove((const char*)args[1]);
-      lock_release(&file_syscalls_lock);
       break;
     case SYS_OPEN: {
       verify_string((const char*)args[1]);
-      lock_acquire(&file_syscalls_lock);
       struct file* fp = filesys_open((const char*)args[1]);
       if (fp == NULL) {
         f->eax = -1;
@@ -109,14 +98,11 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
           file_deny_write(fp);
         }
       }
-      lock_release(&file_syscalls_lock);
       break;
     }
     case SYS_FILESIZE: {
-      lock_acquire(&file_syscalls_lock);
       struct file* fp = get_file(args[1]);
       f->eax = (fp == NULL ? -1 : file_length(fp));
-      lock_release(&file_syscalls_lock);
       break;
     }
     case SYS_READ: {
@@ -139,10 +125,8 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
           f->eax = -1;
           break;
         default: {
-          lock_acquire(&file_syscalls_lock);
           struct file* fp = get_file(args[1]);
           f->eax = (fp == NULL ? -1 : file_read(fp, (void*)args[2], args[3]));
-          lock_release(&file_syscalls_lock);
           break;
         }
       }
@@ -160,32 +144,25 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
           f->eax = args[3];
           break;
         default: {
-          lock_acquire(&file_syscalls_lock);
           struct file* fp = get_file(args[1]);
           f->eax = (fp == NULL ? -1 : file_write(fp, (void*)args[2], args[3]));
-          lock_release(&file_syscalls_lock);
           break;
         }
       }
       break;
     case SYS_SEEK: {
-      lock_acquire(&file_syscalls_lock);
       struct file* fp = get_file(args[1]);
       if (fp != NULL) {
         file_seek(fp, args[2]);
       }
-      lock_release(&file_syscalls_lock);
       break;
     }
     case SYS_TELL: {
-      lock_acquire(&file_syscalls_lock);
       struct file* fp = get_file(args[1]);
       f->eax = (fp == NULL ? -1 : file_tell(fp));
-      lock_release(&file_syscalls_lock);
       break;
     }
     case SYS_CLOSE: {
-      lock_acquire(&file_syscalls_lock);
       struct list* files = &(thread_current()->pcb->files);
       for (struct list_elem* elem = list_begin(files); elem != list_end(files);
            elem = list_next(elem)) {
@@ -197,7 +174,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
           break;
         }
       }
-      lock_release(&file_syscalls_lock);
       break;
     }
     case SYS_PRACTICE:

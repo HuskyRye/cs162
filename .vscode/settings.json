@@ -23,7 +23,12 @@
         "init.h": "c",
         "main.h": "c",
         "file.h": "c",
-        "synch.h": "c"
+        "synch.h": "c",
+        "vaddr.h": "c",
+        "array": "c",
+        "string": "c",
+        "vector": "c",
+        "string_view": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }

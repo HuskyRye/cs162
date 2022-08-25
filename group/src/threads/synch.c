@@ -165,7 +165,7 @@ void lock_init(struct lock* lock) {
   sema_init(&lock->semaphore, 1);
 }
 
-void recursive_donate(struct thread* holder, int priority) {
+static void recursive_donate(struct thread* holder, int priority) {
   if (holder == NULL)
     return;
   if (holder->priority < priority)
@@ -317,7 +317,8 @@ struct semaphore_elem {
   int priority;
 };
 
-bool waiter_prio_greater(const struct list_elem* a, const struct list_elem* b, void* aux) {
+static bool waiter_prio_greater(const struct list_elem* a, const struct list_elem* b,
+                                void* aux UNUSED) {
   struct semaphore_elem* wa = list_entry(a, struct semaphore_elem, elem);
   struct semaphore_elem* wb = list_entry(b, struct semaphore_elem, elem);
   return wa->priority > wb->priority;

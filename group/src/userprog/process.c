@@ -303,6 +303,8 @@ void process_exit(void) {
   while (!list_empty(&cur->pcb->locks)) {
     struct lock_info* info_to_free =
         list_entry(list_pop_front(&cur->pcb->locks), struct lock_info, elem);
+    if (lock_held_by_current_thread(&info_to_free->lock))
+      lock_release(&info_to_free->lock);
     free(info_to_free);
   }
 

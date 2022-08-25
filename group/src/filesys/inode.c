@@ -6,6 +6,7 @@
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
@@ -48,9 +49,13 @@ static block_sector_t byte_to_sector(const struct inode* inode, off_t pos) {
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
+struct lock inodes_lock;
 
 /* Initializes the inode module. */
-void inode_init(void) { list_init(&open_inodes); }
+void inode_init(void) {
+  list_init(&open_inodes);
+  lock_init(&inodes_lock);
+}
 
 /* Initializes an inode with LENGTH bytes of data and
    writes the new inode to sector SECTOR on the file system
@@ -92,6 +97,7 @@ bool inode_create(block_sector_t sector, off_t length) {
    and returns a `struct inode' that contains it.
    Returns a null pointer if memory allocation fails. */
 struct inode* inode_open(block_sector_t sector) {
+  lock_acquire(&inodes_lock);
   struct list_elem* e;
   struct inode* inode;
 
@@ -100,6 +106,7 @@ struct inode* inode_open(block_sector_t sector) {
     inode = list_entry(e, struct inode, elem);
     if (inode->sector == sector) {
       inode_reopen(inode);
+      lock_release(&inodes_lock);
       return inode;
     }
   }
@@ -116,6 +123,7 @@ struct inode* inode_open(block_sector_t sector) {
   inode->deny_write_cnt = 0;
   inode->removed = false;
   buffer_cache_read(inode->sector, &inode->data, 0, BLOCK_SECTOR_SIZE);
+  lock_release(&inodes_lock);
   return inode;
 }
 
@@ -140,7 +148,9 @@ void inode_close(struct inode* inode) {
   /* Release resources if this was the last opener. */
   if (--inode->open_cnt == 0) {
     /* Remove from inode list and release lock. */
+    lock_acquire(&inodes_lock);
     list_remove(&inode->elem);
+    lock_release(&inodes_lock);
 
     /* Deallocate blocks if removed. */
     if (inode->removed) {

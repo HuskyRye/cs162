@@ -7,6 +7,8 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 #include "threads/synch.h"
+#include "threads/thread.h"
+#include "devices/timer.h"
 
 /* Partition that contains the file system. */
 struct block* fs_device;
@@ -31,6 +33,8 @@ static struct BCE buffer_cache_entrys[BUFFER_CACHE_SIZE];
 /* Buffer cache */
 static uint8_t buffer_cache[BUFFER_CACHE_SIZE][BLOCK_SECTOR_SIZE];
 
+static void buffer_cache_flush(void* aux UNUSED);
+
 static void buffer_cache_init(void) {
   lock_init(&buffer_cache_lock);
   buffer_cache_clock_head = 0;
@@ -38,6 +42,24 @@ static void buffer_cache_init(void) {
     struct BCE* buffer_cache_entry = &buffer_cache_entrys[i];
     buffer_cache_entry->valid = false;
     cond_init(&buffer_cache_entry->cond);
+  }
+  // thread_create("buffer_cache_flush", PRI_DEFAULT, buffer_cache_flush, NULL);
+}
+
+static void buffer_cache_flush(void* aux UNUSED) {
+  while (true) {
+    timer_msleep(3000);
+    lock_acquire(&buffer_cache_lock);
+    for (int i = 0; i < BUFFER_CACHE_SIZE; ++i) {
+      struct BCE* buffer_cache_entry = &buffer_cache_entrys[i];
+      if (buffer_cache_entry->valid && buffer_cache_entry->dirty) {
+        buffer_cache_entry->dirty = false;
+        lock_release(&buffer_cache_lock);
+        block_write(fs_device, buffer_cache_entry->sector, buffer_cache[i]);
+        lock_acquire(&buffer_cache_lock);
+      }
+    }
+    lock_release(&buffer_cache_lock);
   }
 }
 
@@ -153,7 +175,15 @@ void filesys_init(bool format) {
 
 /* Shuts down the file system module, writing any unwritten data
    to disk. */
-void filesys_done(void) { free_map_close(); }
+void filesys_done(void) {
+  free_map_close();
+  for (int i = 0; i < BUFFER_CACHE_SIZE; ++i) {
+    struct BCE* buffer_cache_entry = &buffer_cache_entrys[i];
+    if (buffer_cache_entry->valid && buffer_cache_entry->dirty) {
+      block_write(fs_device, buffer_cache_entry->sector, buffer_cache[i]);
+    }
+  }
+}
 
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
