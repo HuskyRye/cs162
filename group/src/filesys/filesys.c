@@ -136,19 +136,18 @@ static void buffer_cache_release(int entry) {
   lock_release(&buffer_cache_lock);
 }
 
-void buffer_cache_read(block_sector_t sector, uint8_t* buffer, off_t sector_ofs, off_t size) {
+void buffer_cache_read(block_sector_t sector, void* buffer_, off_t sector_ofs, off_t size) {
+  uint8_t* buffer = (uint8_t*)buffer_;
   int entry = buffer_cache_acquire(sector, true);
   memcpy(buffer, buffer_cache[entry] + sector_ofs, size);
   buffer_cache_release(entry);
 }
 
-void buffer_cache_write(block_sector_t sector, uint8_t* buffer, off_t sector_ofs, off_t size) {
+void buffer_cache_write(block_sector_t sector, const void* buffer_, off_t sector_ofs, off_t size) {
+  uint8_t* buffer = (uint8_t*)buffer_;
   off_t sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
   bool read = sector_ofs > 0 || size < sector_left;
   int entry = buffer_cache_acquire(sector, read);
-  if (sector_ofs == 0 && size == sector_left) {
-    memset(buffer_cache[entry], 0, BLOCK_SECTOR_SIZE);
-  }
   memcpy(buffer_cache[entry] + sector_ofs, buffer, size);
   buffer_cache_entrys[entry].dirty = true;
   buffer_cache_release(entry);
