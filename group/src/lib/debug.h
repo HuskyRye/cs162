@@ -8,6 +8,7 @@
 #define NO_RETURN __attribute__((noreturn))
 #define NO_INLINE __attribute__((noinline))
 #define PRINTF_FORMAT(FMT, FIRST) __attribute__((format(printf, FMT, FIRST)))
+#define FALLTHROUGH __attribute__((fallthrough));
 
 /* Halts the OS, printing the source file name, line number, and
    function name, plus a user-specific message. */

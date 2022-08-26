@@ -14,6 +14,7 @@
 #include "devices/shutdown.h"
 #include "lib/string.h"
 #include "lib/float.h"
+#include "filesys/inode.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -34,10 +35,12 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     case SYS_WRITE:
     case SYS_PT_CREATE:
       verify_arg_vaddr(&args[3]);
+      FALLTHROUGH
     case SYS_CREATE:
     case SYS_SEEK:
     case SYS_SEMA_INIT:
       verify_arg_vaddr(&args[2]);
+      FALLTHROUGH
     case SYS_EXIT:
     case SYS_EXEC:
     case SYS_WAIT:
@@ -54,7 +57,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     case SYS_LOCK_RELEASE:
     case SYS_SEMA_DOWN:
     case SYS_SEMA_UP:
+    case SYS_INUMBER:
       verify_arg_vaddr(&args[1]);
+      FALLTHROUGH
     case SYS_HALT:
     case SYS_PT_EXIT:
     case SYS_GET_TID:
@@ -323,6 +328,15 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     case SYS_GET_TID:
       f->eax = thread_current()->tid;
       break;
+    case SYS_INUMBER: {
+      struct file* fp = get_file(args[1]);
+      if (fp == NULL) {
+        f->eax = -1;
+      } else {
+        f->eax = inode_get_inumber(file_get_inode(fp));
+      }
+      break;
+    }
     default:
       break;
   }
