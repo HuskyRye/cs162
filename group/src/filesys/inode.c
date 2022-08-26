@@ -36,6 +36,8 @@ struct inode {
   int deny_write_cnt;    /* 0: writes ok, >0: deny writes. */
 };
 
+/* Returns the block device sector indexed at SECTOR_INDEX within INODE_SECTOR.
+   Caller ensures that INODE_SECTOR contains an inode and the required sector exists. */
 static block_sector_t index_to_sector(block_sector_t inode_sector, size_t sector_index) {
   block_sector_t sector;
   if (sector_index < DIRECT_BLOCK_COUNT) {
@@ -89,6 +91,8 @@ void inode_init(void) {
   lock_init(&inodes_lock);
 }
 
+/* Allocates sectors and stores them at index START to END in sector INDIRECT.
+   Returns number of sectors successfully allocated. */
 static size_t free_map_allocate_indirect(block_sector_t indirect, size_t start, size_t end) {
   size_t i;
   for (i = start; i < end; ++i) {
@@ -100,6 +104,7 @@ static size_t free_map_allocate_indirect(block_sector_t indirect, size_t start, 
   return i - start;
 }
 
+/* Releases sectors stores at index START to END in sector INDIRECT. */
 static void free_map_release_indirect(block_sector_t indirect, size_t start, size_t end) {
   for (size_t i = start; i < end; ++i) {
     block_sector_t sector;
@@ -108,6 +113,9 @@ static void free_map_release_indirect(block_sector_t indirect, size_t start, siz
   }
 }
 
+/* Allocates data sectors and stores them at index START to end in inode within INODE_SECTOR.
+   Caller ensures that inode index structure exists.
+   Returns number of sectors successfully allocated. */
 static size_t inode_allocate(block_sector_t inode_sector, size_t start, size_t end) {
   size_t i = start;
   while (i < end) {
@@ -154,24 +162,33 @@ static size_t inode_allocate(block_sector_t inode_sector, size_t start, size_t e
 
 static char zeros[BLOCK_SECTOR_SIZE];
 
+/* Returns the length, in bytes, of inode within INODE_SECTOR.
+   Caller ensures that INODE_SECTOR contains an inode. */
 static off_t inode_sector_length(block_sector_t inode_sector) {
   off_t length;
   buffer_cache_read(inode_sector, &length, offsetof(struct inode_disk, length), sizeof(off_t));
   return length;
 }
 
+/* Set the inode length, in bytes, of inode within INODE_SECTOR to LENGTH.
+   Caller ensures that INODE_SECTOR contains an inode. */
 static void inode_sector_set_length(block_sector_t inode_sector, off_t length) {
   buffer_cache_write(inode_sector, &length, offsetof(struct inode_disk, length), sizeof(off_t));
 }
 
-static bool inode_extend(block_sector_t sector, off_t new_length) {
-  off_t old_length = inode_sector_length(sector);
+/* Extends inode length of inode within INODE_SECTOR to new_length,
+   also extends inode index structure if necessary. 
+   Caller ensures that INODE_SECTOR contains an inode.
+   Returns true if successful. 
+   Returns false if disk allocation fails, rollback to the previous state. */
+static bool inode_extend(block_sector_t inode_sector, off_t new_length) {
   bool success = true;
+  off_t old_length = inode_sector_length(inode_sector);
   if (new_length > old_length) {
     size_t old_sectors = bytes_to_sectors(old_length);
     size_t new_sectors = bytes_to_sectors(new_length);
     ASSERT(new_sectors <= 16384);
-    if (new_sectors > old_sectors) {
+    if (new_sectors > old_sectors) { /* Needs to extend */
       bool single_indirect_allocated = false;
       block_sector_t single_indirect;
       bool double_indirect_allocated = false;
@@ -185,25 +202,28 @@ static bool inode_extend(block_sector_t sector, off_t new_length) {
           new_sectors - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT, INDIRECT_BLOCK_COUNT);
 
       if (old_sectors <= DIRECT_BLOCK_COUNT && new_sectors > DIRECT_BLOCK_COUNT) {
+        /* Needs to extend single indirect structure sector. */
         success = free_map_allocate(1, &single_indirect);
         if (success) {
           single_indirect_allocated = true;
-          buffer_cache_write(sector, &single_indirect, offsetof(struct inode_disk, single_indirect),
-                             sizeof(block_sector_t));
+          buffer_cache_write(inode_sector, &single_indirect,
+                             offsetof(struct inode_disk, single_indirect), sizeof(block_sector_t));
         }
       }
 
       if (success && old_sectors <= DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT &&
           new_sectors > DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT) {
+        /* Needs to extend double indirect structure sector. */
         success = free_map_allocate(1, &double_indirect);
         if (success) {
           double_indirect_allocated = true;
-          buffer_cache_write(sector, &double_indirect, offsetof(struct inode_disk, double_indirect),
-                             sizeof(block_sector_t));
+          buffer_cache_write(inode_sector, &double_indirect,
+                             offsetof(struct inode_disk, double_indirect), sizeof(block_sector_t));
         }
       }
 
       if (success && new_sectors > DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT) {
+        /* Needs to extend double indirect sectors */
         size_t indirect_allocated = free_map_allocate_indirect(
             double_indirect, old_double_indirect_sectors, new_double_indirect_sectors);
         success = (indirect_allocated == new_double_indirect_sectors - old_double_indirect_sectors);
@@ -214,37 +234,37 @@ static bool inode_extend(block_sector_t sector, off_t new_length) {
       }
 
       if (success) {
-        size_t end_sectors = inode_allocate(sector, old_sectors, new_sectors);
+        /* Extends data sectors. */
+        size_t end_sectors = inode_allocate(inode_sector, old_sectors, new_sectors);
         success = (end_sectors == new_sectors);
         if (!success) {
           for (size_t i = old_sectors; i < end_sectors; ++i) {
-            block_sector_t data_sector = index_to_sector(sector, i);
+            block_sector_t data_sector = index_to_sector(inode_sector, i);
             free_map_release(data_sector, 1);
           }
         }
       }
 
       if (success) {
-        /* Extend data sector */
+        /* Filled extended data sectors with zero */
         for (size_t i = old_sectors; i < new_sectors; ++i) {
-          block_sector_t data_sector = index_to_sector(sector, i);
+          block_sector_t data_sector = index_to_sector(inode_sector, i);
           buffer_cache_write(data_sector, zeros, 0, BLOCK_SECTOR_SIZE);
         }
       } else {
-        if (new_sectors > DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT) {
+        /* Rollback to a previous good state. */
+        if (new_sectors > DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT)
           free_map_release_indirect(double_indirect, old_double_indirect_sectors,
                                     new_double_indirect_sectors);
-        }
-        if (double_indirect_allocated) {
+        if (double_indirect_allocated)
           free_map_release(double_indirect, 1);
-        }
-        if (single_indirect_allocated) {
+        if (single_indirect_allocated)
           free_map_release(single_indirect, 1);
-        }
       }
     }
     if (success) {
-      inode_sector_set_length(sector, new_length);
+      /* Update inode length. */
+      inode_sector_set_length(inode_sector, new_length);
     }
   }
   return success;
@@ -262,13 +282,11 @@ bool inode_create(block_sector_t sector, off_t length) {
      one sector in size, and you should fix that. */
   ASSERT(sizeof(struct inode_disk) == BLOCK_SECTOR_SIZE);
 
+  /* Sets inode length to 0 and extends it. */
   buffer_cache_write(sector, zeros, 0, BLOCK_SECTOR_SIZE);
-
-  off_t zero = 0;
-  buffer_cache_write(sector, &zero, offsetof(struct inode_disk, length), sizeof(off_t));
+  inode_sector_set_length(sector, 0);
   unsigned magic = INODE_MAGIC;
   buffer_cache_write(sector, &magic, offsetof(struct inode_disk, magic), sizeof(unsigned));
-
   return inode_extend(sector, length);
 }
 
@@ -402,9 +420,7 @@ off_t inode_read_at(struct inode* inode, void* buffer_, off_t size, off_t offset
 
 /* Writes SIZE bytes from BUFFER into INODE, starting at OFFSET.
    Returns the number of bytes actually written, which may be
-   less than SIZE if end of file is reached or an error occurs.
-   (Normally a write at end of file would extend the inode, but
-   growth is not yet implemented.) */
+   less than SIZE if an error occurs. */
 off_t inode_write_at(struct inode* inode, const void* buffer_, off_t size, off_t offset) {
   const uint8_t* buffer = buffer_;
   off_t bytes_written = 0;
