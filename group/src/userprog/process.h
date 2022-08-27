@@ -77,6 +77,7 @@ struct process {
   lock_t ld;                   /* Next ld(lock descriptor) */
   struct list semaphores;      /* User-Level semaphores. */
   sema_t sd;                   /* Next sd(semaphore descriptor) */
+  struct dir* curdir;          /* Current directory. */
 };
 
 void userprog_init(void);

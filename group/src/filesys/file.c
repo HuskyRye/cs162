@@ -2,29 +2,33 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/directory.h"
 
 /* An open file. */
 struct file {
   struct inode* inode; /* File's inode. */
   off_t pos;           /* Current position. */
   bool deny_write;     /* Has file_deny_write() been called? */
+  struct dir* dir;
 };
 
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
    allocation fails or if INODE is null. */
 struct file* file_open(struct inode* inode) {
-  struct file* file = calloc(1, sizeof *file);
-  if (inode != NULL && file != NULL) {
-    file->inode = inode;
-    file->pos = 0;
-    file->deny_write = false;
-    return file;
-  } else {
-    inode_close(inode);
-    free(file);
+  if (inode == NULL) {
     return NULL;
   }
+  struct file* file = calloc(1, sizeof *file);
+  if (file == NULL) {
+    inode_close(inode);
+    return NULL;
+  }
+  file->inode = inode;
+  file->pos = 0;
+  file->deny_write = false;
+  file->dir = dir_open(inode);
+  return file;
 }
 
 /* Opens and returns a new file for the same inode as FILE.
@@ -45,6 +49,10 @@ void file_close(struct file* file) {
 /* Returns the inode encapsulated by FILE. */
 struct inode* file_get_inode(struct file* file) {
   return file->inode;
+}
+
+struct dir* file_get_dir(struct file* file) {
+  return file->dir;
 }
 
 /* Reads SIZE bytes from FILE into BUFFER,
@@ -75,6 +83,9 @@ off_t file_read_at(struct file* file, void* buffer, off_t size, off_t file_ofs) 
    not yet implemented.)
    Advances FILE's position by the number of bytes read. */
 off_t file_write(struct file* file, const void* buffer, off_t size) {
+  if (file->dir != NULL) {
+    return -1;
+  }
   off_t bytes_written = inode_write_at(file->inode, buffer, size, file->pos);
   file->pos += bytes_written;
   return bytes_written;

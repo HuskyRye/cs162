@@ -41,9 +41,8 @@ void userprog_init(void) {
      can come at any time and activate our pagedir */
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
+  ASSERT(success); /* Kill the kernel if we did not succeed */
 
-  /* Kill the kernel if we did not succeed */
-  ASSERT(success);
   list_init(&(t->pcb->children));
 }
 
@@ -135,7 +134,7 @@ static void start_process(void* load_info_) {
 
   struct thread* t = thread_current();
   struct intr_frame if_;
-  bool success, pcb_success;
+  bool success, pcb_success, curdir_success;
 
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
@@ -161,6 +160,8 @@ static void start_process(void* load_info_) {
     t->pcb->ld = 0;
     list_init(&(t->pcb->semaphores));
     t->pcb->sd = 0;
+    t->pcb->curdir = dir_reopen(load_info->parent->curdir);
+    success = curdir_success = t->pcb->curdir != NULL;
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -193,6 +194,9 @@ static void start_process(void* load_info_) {
     // Avoid race where PCB is freed before t->pcb is set to NULL
     // If this happens, then an unfortuantely timed timer interrupt
     // can try to activate the pagedir, but it is now freed memory
+    if (curdir_success) {
+      dir_close(t->pcb->curdir);
+    }
     struct process* pcb_to_free = t->pcb;
     t->pcb = NULL;
     free(pcb_to_free);
@@ -314,6 +318,8 @@ void process_exit(void) {
         list_entry(list_pop_front(&cur->pcb->semaphores), struct sema_info, elem);
     free(info_to_free);
   }
+
+  dir_close(cur->pcb->curdir);
 
   /* Free the PCB of this process and kill this thread
      Avoid race where PCB is freed before t->pcb is set to NULL

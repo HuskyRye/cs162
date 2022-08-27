@@ -5,6 +5,9 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/free-map.h"
+#include "threads/thread.h"
+#include "userprog/process.h"
 
 /* A directory. */
 struct dir {
@@ -22,12 +25,14 @@ struct dir_entry {
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool dir_create(block_sector_t sector, size_t entry_cnt) {
-  return inode_create(sector, entry_cnt * sizeof(struct dir_entry));
+  return inode_create(sector, entry_cnt * sizeof(struct dir_entry), true);
 }
 
 /* Opens and returns the directory for the given INODE, of which
    it takes ownership.  Returns a null pointer on failure. */
 struct dir* dir_open(struct inode* inode) {
+  if (!is_dir(inode))
+    return NULL;
   struct dir* dir = calloc(1, sizeof *dir);
   if (inode != NULL && dir != NULL) {
     dir->inode = inode;
@@ -198,4 +203,129 @@ bool dir_readdir(struct dir* dir, char name[NAME_MAX + 1]) {
     }
   }
   return false;
+}
+
+bool dir_empty(struct inode* inode) {
+  struct dir_entry e;
+  for (size_t ofs = 0; inode_read_at(inode, &e, sizeof e, ofs) == sizeof e; ofs += sizeof e) {
+    if (e.in_use) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* Extracts a file name part from *SRCP into PART, and updates *SRCP so that the
+   next call will return the next file name part. Returns 1 if successful, 0 at
+   end of string, -1 for a too-long file name part. */
+static int get_next_part(char part[NAME_MAX + 1], const char** srcp) {
+  const char* src = *srcp;
+  char* dst = part;
+
+  /* Skip leading slashes.  If it's all slashes, we're done. */
+  while (*src == '/')
+    src++;
+  if (*src == '\0')
+    return 0;
+
+  /* Copy up to NAME_MAX character from SRC to DST.  Add null terminator. */
+  while (*src != '/' && *src != '\0') {
+    if (dst < part + NAME_MAX)
+      *dst++ = *src;
+    else
+      return -1;
+    src++;
+  }
+  *dst = '\0';
+
+  /* Advance source pointer. */
+  *srcp = src;
+  return 1;
+}
+
+/* Resolves the path, sets FILE_NAME to the last part of path resolved,
+   sets *DIR to the directory containing file or dir named FILE_NAME, and
+   sets *INODE to the inode of file or dir named FILE_NAME.
+   Returns true if successful, false if any dir name in PATH, besides the last, not exists. */
+bool path_resolve(const char* path, char file_name[NAME_MAX + 1], struct dir** dir,
+                  struct inode** inode_ptr) {
+  if (*path == '\0') {
+    return false;
+  }
+  struct dir* cur_dir = *path == '/' ? dir_open_root() : dir_reopen(thread_current()->pcb->curdir);
+  if (inode_is_removed(cur_dir->inode)) {
+    dir_close(cur_dir);
+    return false;
+  }
+  struct inode* inode = inode_reopen(cur_dir->inode);
+
+  while (get_next_part(file_name, &path)) {
+    if (strcmp(file_name, ".") == 0) {
+      continue;
+    }
+    if (inode == NULL) { /* File or Dir with previous file_name not exists. */
+      dir_close(cur_dir);
+      return false;
+    }
+    if (!is_dir(inode)) { /* Inode with previous file_name is not a dir. */
+      inode_close(inode);
+      dir_close(cur_dir);
+      return false;
+    }
+    if (strcmp(file_name, "..") == 0) {
+      inode_close(inode);
+      inode = inode_open(inode_get_parent(inode));
+    } else {
+      struct dir* next_dir = dir_open(inode);
+      dir_close(cur_dir);
+      cur_dir = next_dir;
+      dir_lookup(cur_dir, file_name, &inode);
+    }
+  }
+  *dir = cur_dir;
+  *inode_ptr = inode;
+  return true;
+}
+
+bool sys_chdir(const char* path) {
+  char dir_name[NAME_MAX + 1];
+  struct dir* dir;
+  struct inode* inode;
+  if (!path_resolve(path, dir_name, &dir, &inode)) {
+    return false;
+  }
+  dir_close(dir);
+  if (inode == NULL) {
+    return false;
+  }
+  dir = dir_open(inode);
+  dir_close(thread_current()->pcb->curdir);
+  thread_current()->pcb->curdir = dir;
+  return true;
+}
+
+bool sys_mkdir(const char* path) {
+  char dir_name[NAME_MAX + 1];
+  struct dir* dir;
+  struct inode* inode;
+  if (!path_resolve(path, dir_name, &dir, &inode)) {
+    return false;
+  }
+
+  if (inode != NULL) { /* File or Dir with name PART already exists. */
+    inode_close(inode);
+    dir_close(dir);
+    return false;
+  }
+  /* Allocates sector, create dir on sector and add it to cur_dir. */
+  block_sector_t inode_sector = 0;
+  bool success = free_map_allocate(1, &inode_sector) && dir_create(inode_sector, 0) &&
+                 dir_add(dir, dir_name, inode_sector);
+  if (success) {
+    inode_set_parent(inode_sector, inode_get_inumber(dir->inode));
+  }
+  if (!success && inode_sector != 0)
+    free_map_release(inode_sector, 1);
+  dir_close(dir);
+  return success;
 }

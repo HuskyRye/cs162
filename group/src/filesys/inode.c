@@ -10,13 +10,15 @@
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
-#define DIRECT_BLOCK_COUNT 124
+#define DIRECT_BLOCK_COUNT 122
 #define INDIRECT_BLOCK_COUNT 128
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk {
+  bool is_dir;                               /* Is directory or not. */
   off_t length;                              /* File size in bytes. */
+  block_sector_t parent;                     /* Parent sector number. */
   unsigned magic;                            /* Magic number. */
   block_sector_t direct[DIRECT_BLOCK_COUNT]; /* Direct blocks. */
   block_sector_t single_indirect;            /* Single indirect blocks. */
@@ -194,7 +196,7 @@ static bool inode_extend(block_sector_t inode_sector, off_t new_length) {
       bool double_indirect_allocated = false;
       block_sector_t double_indirect;
       size_t old_double_indirect_sectors =
-          old_sectors > DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT
+          old_sectors < DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT
               ? 0
               : DIV_ROUND_UP(old_sectors - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT,
                              INDIRECT_BLOCK_COUNT);
@@ -224,6 +226,8 @@ static bool inode_extend(block_sector_t inode_sector, off_t new_length) {
 
       if (success && new_sectors > DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT) {
         /* Needs to extend double indirect sectors */
+        buffer_cache_read(inode_sector, &double_indirect,
+                          offsetof(struct inode_disk, double_indirect), sizeof(block_sector_t));
         size_t indirect_allocated = free_map_allocate_indirect(
             double_indirect, old_double_indirect_sectors, new_double_indirect_sectors);
         success = (indirect_allocated == new_double_indirect_sectors - old_double_indirect_sectors);
@@ -275,7 +279,7 @@ static bool inode_extend(block_sector_t inode_sector, off_t new_length) {
    device.
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
-bool inode_create(block_sector_t sector, off_t length) {
+bool inode_create(block_sector_t sector, off_t length, bool is_dir) {
 
   ASSERT(length >= 0);
   /* If this assertion fails, the inode structure is not exactly
@@ -284,6 +288,7 @@ bool inode_create(block_sector_t sector, off_t length) {
 
   /* Sets inode length to 0 and extends it. */
   buffer_cache_write(sector, zeros, 0, BLOCK_SECTOR_SIZE);
+  buffer_cache_write(sector, &is_dir, offsetof(struct inode_disk, is_dir), sizeof(bool));
   inode_sector_set_length(sector, 0);
   unsigned magic = INODE_MAGIC;
   buffer_cache_write(sector, &magic, offsetof(struct inode_disk, magic), sizeof(unsigned));
@@ -302,7 +307,7 @@ struct inode* inode_open(block_sector_t sector) {
   for (e = list_begin(&open_inodes); e != list_end(&open_inodes); e = list_next(e)) {
     inode = list_entry(e, struct inode, elem);
     if (inode->sector == sector) {
-      inode_reopen(inode);
+      inode->open_cnt++;
       lock_release(&inodes_lock);
       return inode;
     }
@@ -325,8 +330,11 @@ struct inode* inode_open(block_sector_t sector) {
 
 /* Reopens and returns INODE. */
 struct inode* inode_reopen(struct inode* inode) {
-  if (inode != NULL)
+  if (inode != NULL) {
+    lock_acquire(&inodes_lock);
     inode->open_cnt++;
+    lock_release(&inodes_lock);
+  }
   return inode;
 }
 
@@ -477,3 +485,22 @@ void inode_allow_write(struct inode* inode) {
 
 /* Returns the length, in bytes, of INODE's data. */
 off_t inode_length(const struct inode* inode) { return inode_sector_length(inode->sector); }
+
+bool is_dir(struct inode* inode) {
+  bool result;
+  buffer_cache_read(inode->sector, &result, offsetof(struct inode_disk, is_dir), sizeof(bool));
+  return result;
+}
+
+bool inode_is_removed(struct inode* inode) { return inode->removed; }
+
+void inode_set_parent(block_sector_t sector, block_sector_t parent) {
+  buffer_cache_write(sector, &parent, offsetof(struct inode_disk, parent), sizeof(block_sector_t));
+}
+
+block_sector_t inode_get_parent(struct inode* inode) {
+  block_sector_t parent;
+  buffer_cache_read(inode->sector, &parent, offsetof(struct inode_disk, parent),
+                    sizeof(block_sector_t));
+  return parent;
+}

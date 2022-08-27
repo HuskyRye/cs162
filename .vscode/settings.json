@@ -28,7 +28,9 @@
         "array": "c",
         "string": "c",
         "vector": "c",
-        "string_view": "c"
+        "string_view": "c",
+        "filesys.h": "c",
+        "typeinfo": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }
